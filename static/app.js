@@ -67,7 +67,7 @@ function showApp() {
 }
 
 async function initApp() {
-    await Promise.allSettled([loadUsers(), loadGroups(), loadStats(), loadDashboard()]);
+    // Tabs and forms MUST be set up IMMEDIATELY — before any async loads
     setupTabs();
     setupExpenseForm();
     setupSettleForm();
@@ -76,6 +76,9 @@ async function initApp() {
     setupOptimizeBtn();
     setupFilters();
     setupGroupActions();
+
+    // Data loads in background
+    await Promise.allSettled([loadUsers(), loadGroups(), loadStats(), loadDashboard()]);
 }
 
 // ===== AUTH =====
