@@ -16,3 +16,6 @@ config.py
 *.md
 !README.md
 *.sh
+bot.py
+Dockerfile.bot
+cashflow.log

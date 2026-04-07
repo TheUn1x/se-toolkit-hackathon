@@ -14,14 +14,7 @@
 *Balance overview showing who owes whom*
 
 ![Optimize](docs/screenshots/optimize.png)
-*One-click optimized debt settlement plan*
-
-### Telegram Bot
-![Bot Menu](docs/screenshots/bot_menu.png)
-*Main menu with all commands*
-
-![Bot Add Expense](docs/screenshots/bot_expense.png)
-*Step-by-step expense dialog*
+*One-click optimized debt settlement plan — minimizes number of transactions*
 
 > **Live demo:** Replace with your deployed URL or add a GIF recording
 
@@ -49,7 +42,7 @@ Splitting shared expenses is a mess:
 
 ### Our Solution
 
-**CashFlow** automatically tracks all shared expenses, calculates real-time balances, and generates the **minimum number of transactions** needed to settle everything. Works via **web app** and **Telegram bot** — synced to the same database.
+**CashFlow** automatically tracks all shared expenses, calculates real-time balances, and generates the **minimum number of transactions** needed to settle everything. Clean web interface with responsive design — works on desktop and mobile.
 
 ---
 
@@ -57,24 +50,24 @@ Splitting shared expenses is a mess:
 
 ### ✅ Implemented
 
-| Feature | Web App | Telegram Bot |
-|---|:---:|:---:|
-| Email/password registration | ✅ | — |
-| Telegram account linking | ✅ | ✅ |
-| Groups (create, invite, leave, archive) | ✅ | ✅ |
-| Add expenses with categories & currency | ✅ | ✅ |
-| Split types: equal / percent / exact | ✅ | ✅ |
-| Real-time balance calculation | ✅ | ✅ |
-| Full & partial debt settlement | ✅ | ✅ |
-| Optimized debt plan (min transactions) | ✅ | ✅ |
-| Expense history with filters | ✅ | ✅ |
-| Group-level balances & views | ✅ | ✅ |
-| Delete/edit expenses (with safety checks) | ✅ | — |
-| Weekly digest & overdue notifications | ✅ (API) | ✅ (API) |
-| Responsive mobile design | ✅ | — |
-| Docker Compose deployment | ✅ | ✅ |
-| PostgreSQL + SQLite support | ✅ | ✅ |
-| OpenAPI docs (`/docs`) | ✅ | — |
+| Feature | Status |
+|---|:---:|
+| Email/password registration & login | ✅ |
+| Groups (create, invite, leave, archive) | ✅ |
+| Add expenses with categories & currency | ✅ |
+| Split types: equal / by percent / by exact amounts | ✅ |
+| Real-time balance calculation | ✅ |
+| Full & partial debt settlement | ✅ |
+| Optimized debt plan (minimum transactions) | ✅ |
+| Expense history with filters (date, category, group) | ✅ |
+| Group-level balances & expense views | ✅ |
+| Delete/edit expenses (with safety checks) | ✅ |
+| Weekly digest & overdue debt reports (API) | ✅ |
+| Responsive mobile-friendly design | ✅ |
+| Docker Compose one-command deploy | ✅ |
+| PostgreSQL + SQLite support | ✅ |
+| Interactive API documentation (`/docs`) | ✅ |
+| Comprehensive test suite (57 tests) | ✅ |
 
 ### 🚧 Planned
 
@@ -82,13 +75,13 @@ Splitting shared expenses is a mess:
 |---|---|
 | Expense file attachments (photos of receipts) | Not yet |
 | Multi-currency automatic conversion | Not yet |
-| Push notifications (browser mobile) | Not yet |
-| Scheduled weekly digest (Telegram cron) | Not yet |
+| Push notifications (browser / mobile) | Not yet |
 | OAuth2 / Google login | Not yet |
 | Export to CSV / PDF reports | Not yet |
-| Recurring expenses (subscriptions) | Not yet |
+| Recurring expenses (subscriptions, rent) | Not yet |
 | Activity log / audit trail | Not yet |
 | i18n (English / Russian toggle) | Not yet |
+| Telegram bot companion | Not yet |
 
 ---
 
@@ -101,10 +94,7 @@ Splitting shared expenses is a mess:
 git clone https://github.com/TheUn1x/se-toolkit-hackathon.git
 cd se-toolkit-hackathon
 
-# 2. Set your Telegram bot token (get from @BotFather)
-echo "TELEGRAM_BOT_TOKEN=your_token_here" > .env
-
-# 3. Start everything with one command
+# 2. Start everything with one command
 docker compose up -d
 ```
 
@@ -113,7 +103,6 @@ docker compose up -d
 | **Web app** | `http://your-server:8000` |
 | **API docs** | `http://your-server:8000/docs` |
 | **Health check** | `http://your-server:8000/api/health` |
-| **Telegram bot** | Open your bot in Telegram → `/start` |
 
 ### Local Development (no Docker)
 
@@ -124,10 +113,9 @@ pip install -r requirements.txt
 # Start API
 rm -f cashflow.db
 python3 -m uvicorn api:app --reload --port 8000
-
-# Start Telegram bot (separate terminal)
-python3 bot.py
 ```
+
+Then open `http://localhost:8000` in your browser.
 
 ### Running Tests
 
@@ -135,7 +123,7 @@ python3 bot.py
 python3 -m unittest test_cashflow -v
 ```
 
-**57 tests** covering: balance calculation, split types, groups, settlements, debt optimization, edge cases.
+**57 tests** covering: balance calculation, split types (equal/percent/exact), groups, settlements, debt optimization, edge cases, kopeck rounding.
 
 ---
 
@@ -155,6 +143,7 @@ python3 -m unittest test_cashflow -v
 # Install Docker (if not installed)
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 ### Step-by-Step Deployment
@@ -166,30 +155,20 @@ git clone https://github.com/TheUn1x/se-toolkit-hackathon.git
 cd se-toolkit-hackathon
 ```
 
-#### 2. Create `.env` file
-
-```bash
-# Get your bot token from @BotFather on Telegram
-cat > .env << 'EOF'
-TELEGRAM_BOT_TOKEN=6159582297:AAFUBMfGJOsrRAkxtH3bFAugDxKedWxQfY8
-EOF
-```
-
-#### 3. Build and start
+#### 2. Build and start
 
 ```bash
 docker compose up -d --build
 ```
 
-This starts 3 containers:
+This starts 2 containers:
 
 | Container | Description | Port |
 |---|---|---|
-| `cashflow-postgres` | PostgreSQL 16 database | 5432 |
+| `cashflow-postgres` | PostgreSQL 16 database | internal only |
 | `cashflow-api` | FastAPI backend + web UI | 8000 |
-| `cashflow-bot` | Telegram bot | — |
 
-#### 4. Verify
+#### 3. Verify
 
 ```bash
 # Check all containers are healthy
@@ -200,17 +179,16 @@ curl http://localhost:8000/api/health
 # Expected: {"status":"ok","service":"CashFlow API","version":"3.0.0"}
 ```
 
-#### 5. Access the app
+#### 4. Access the app
 
-- **Web:** Open `http://your-server-ip:8000` in browser
-- **API docs:** `http://your-server-ip:8000/docs`
-- **Telegram:** Open your bot → send `/start`
+- **Web:** Open `http://your-server-ip:8000` in any browser
+- **API docs:** `http://your-server-ip:8000/docs` — interactive Swagger UI to test every endpoint
 
-#### 6. Production hardening (optional)
+#### 5. Production hardening (optional)
 
 ```bash
-# Run behind Nginx reverse proxy
-sudo apt install nginx
+# Run behind Nginx reverse proxy with SSL
+sudo apt install nginx certbot python3-certbot-nginx
 
 sudo tee /etc/nginx/sites-available/cashflow << 'EOF'
 server {
@@ -227,13 +205,10 @@ EOF
 
 sudo ln -s /etc/nginx/sites-available/cashflow /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-
-# Add SSL with Let's Encrypt
-sudo apt install certbot python3-certbot-nginx
 sudo certbot --nginx -d your-domain.com
 ```
 
-#### 7. Database backups
+#### 6. Database backups
 
 ```bash
 # Backup
@@ -257,8 +232,7 @@ docker compose up -d --build
 ### Logs
 
 ```bash
-docker compose logs -f api    # API logs
-docker compose logs -f bot    # Telegram bot logs
+docker compose logs -f api       # API logs
 docker compose logs -f postgres  # Database logs
 ```
 
@@ -267,18 +241,26 @@ docker compose logs -f postgres  # Database logs
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Web App    │     │ Telegram    │     │  REST API   │
-│  (React/JS) │     │ Bot         │     │  (FastAPI)  │
-│  Port 8000  │     │ (aiogram)   │     │  /api/*     │
-└──────┬──────┘     └──────┬──────┘     └──────┬──────┘
-       │                   │                   │
-       └───────────────────┼───────────────────┘
-                           │
-                    ┌──────▼──────┐
-                    │ PostgreSQL  │
-                    │  Port 5432  │
-                    └─────────────┘
+┌──────────────────────────────────────┐
+│         Web Browser                  │
+│   (Dashboard / Groups / Balances)    │
+└────────────────┬─────────────────────┘
+                 │ HTTP
+                 ▼
+┌──────────────────────────────────────┐
+│  FastAPI (port 8000)                 │
+│  • REST API  • Web UI  • Auth        │
+│  • Groups    • Expenses  • Balances  │
+│  • Settlements  • Optimization       │
+└────────────────┬─────────────────────┘
+                 │ SQLAlchemy
+                 ▼
+┌──────────────────────────────────────┐
+│  PostgreSQL 16                       │
+│  • users  • groups  • expenses       │
+│  • expense_splits  • settlements     │
+│  • link_codes  • user_settings       │
+└──────────────────────────────────────┘
 ```
 
 ## Tech Stack
@@ -287,8 +269,7 @@ docker compose logs -f postgres  # Database logs
 |---|---|
 | **Backend** | Python 3.12, FastAPI |
 | **Database** | PostgreSQL 16 (SQLite fallback) |
-| **Web Frontend** | Vanilla HTML/CSS/JS, responsive |
-| **Telegram Bot** | python-telegram-bot v20+ |
+| **Web Frontend** | Vanilla HTML/CSS/JS, fully responsive |
 | **Deployment** | Docker + Docker Compose |
 | **Testing** | Python unittest (57 tests) |
 
@@ -303,12 +284,18 @@ docker compose logs -f postgres  # Database logs
 | `GET` | `/api/users` | List all users |
 | `POST` | `/api/groups` | Create group |
 | `GET` | `/api/groups?user_id=1` | User's groups |
+| `GET` | `/api/groups/{id}` | Group details with members |
 | `POST` | `/api/expenses` | Add expense |
+| `PUT` | `/api/expenses/{id}` | Edit expense |
+| `DELETE` | `/api/expenses/{id}` | Delete expense |
 | `GET` | `/api/expenses?group_id=1&category=food` | Filtered expenses |
 | `GET` | `/api/balances/{user_id}` | User balances |
+| `GET` | `/api/balances/group/{group_id}` | Group balances |
 | `GET` | `/api/optimize-settlements` | Optimal debt plan |
 | `POST` | `/api/settle` | Record settlement |
 | `GET` | `/api/stats` | Global statistics |
+| `GET` | `/api/categories` | Available categories |
+| `GET` | `/api/currencies` | Available currencies |
 
 Full interactive docs at **`http://your-server:8000/docs`**.
 
