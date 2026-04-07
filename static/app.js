@@ -304,6 +304,16 @@ function setupGroupForm() {
 }
 
 // ===== DASHBOARD =====
+async function loadStats() {
+    try {
+        const s = await apiGet('/api/stats');
+        setTxt('stat-groups', s.groups);
+        setTxt('stat-expenses', s.expenses);
+        setTxt('stat-total', s.total_expenses.toFixed(2) + ' ₽');
+        setTxt('stat-settled', s.total_settled.toFixed(2) + ' ₽');
+    } catch {}
+}
+
 async function loadDashboard() {
     if (!currentUser) return;
     try {
