@@ -737,21 +737,52 @@ def get_overdue_debts(days: int = 7):
 
 @app.get("/api/stats")
 def get_stats(current_user: AuthUser = Depends(get_current_user)):
-    """Get overall statistics (auth required)"""
+    """Get statistics for the CURRENT USER only (not global)"""
     session = cf.db.get_session()
     try:
         from sqlalchemy import text
-        user_count = cf.get_user_count()
-        expense_count = session.execute(text("SELECT COUNT(*) FROM expenses")).scalar()
-        total_expenses = session.execute(text("SELECT COALESCE(SUM(amount), 0) FROM expenses")).scalar()
-        settlement_count = session.execute(text("SELECT COUNT(*) FROM settlements")).scalar()
-        total_settled = session.execute(text("SELECT COALESCE(SUM(amount), 0) FROM settlements")).scalar()
-        group_count = session.execute(text("SELECT COUNT(*) FROM groups")).scalar()
+
+        # Count groups user is a member of
+        group_count = session.execute(
+            text("SELECT COUNT(*) FROM group_members WHERE user_id = :uid"),
+            {"uid": current_user.id}
+        ).scalar()
+
+        # Count expenses where user is payer OR participant
+        expense_count = session.execute(
+            text("""
+                SELECT COUNT(*) FROM expenses e
+                WHERE e.payer_id = :uid
+                OR e.id IN (SELECT es.expense_id FROM expense_splits es WHERE es.user_id = :uid)
+            """),
+            {"uid": current_user.id}
+        ).scalar()
+
+        # Total expenses involving this user
+        total_expenses = session.execute(
+            text("""
+                SELECT COALESCE(SUM(e.amount), 0) FROM expenses e
+                WHERE e.payer_id = :uid
+                OR e.id IN (SELECT es.expense_id FROM expense_splits es WHERE es.user_id = :uid)
+            """),
+            {"uid": current_user.id}
+        ).scalar()
+
+        # Settlements where user is payer OR creditor
+        settlement_count = session.execute(
+            text("SELECT COUNT(*) FROM settlements WHERE payer_id = :uid OR creditor_id = :uid"),
+            {"uid": current_user.id}
+        ).scalar()
+
+        total_settled = session.execute(
+            text("SELECT COALESCE(SUM(amount), 0) FROM settlements WHERE payer_id = :uid OR creditor_id = :uid"),
+            {"uid": current_user.id}
+        ).scalar()
     finally:
         session.close()
 
     return {
-        "users": user_count,
+        "users": group_count,  # Show group count instead of user count
         "groups": group_count,
         "expenses": expense_count,
         "total_expenses": round(float(total_expenses), 2),
