@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CashFlow — Shared Expense Tracker</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Auth Screens -->
+    <div id="auth-screen" class="auth-container">
+        <div class="auth-card">
+            <h1>💰 CashFlow</h1>
+            <p class="auth-subtitle">Shared Expense Tracker</p>
+
+            <div id="login-form" class="auth-form">
+                <h2>Sign In</h2>
+                <form id="signin-form">
+                    <input type="email" id="login-email" placeholder="Email" required>
+                    <input type="password" id="login-password" placeholder="Password" required>
+                    <button type="submit" class="btn btn-primary">Sign In</button>
+                </form>
+                <p class="auth-link">Don't have an account? <a href="#" id="show-register">Sign Up</a></p>
+            </div>
+
+            <div id="register-form" class="auth-form hidden">
+                <h2>Sign Up</h2>
+                <form id="signup-form">
+                    <input type="text" id="reg-name" placeholder="Your Name" required>
+                    <input type="text" id="reg-username" placeholder="Username (optional)">
+                    <input type="email" id="reg-email" placeholder="Email" required>
+                    <input type="password" id="reg-password" placeholder="Password (min 6 chars)" required minlength="6">
+                    <button type="submit" class="btn btn-primary">Sign Up</button>
+                </form>
+                <p class="auth-link">Already have an account? <a href="#" id="show-login">Sign In</a></p>
+            </div>
+
+            <div id="demo-access" class="auth-demo">
+                <p>Or <a href="#" id="demo-link">continue without account</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app-screen" class="hidden">
+        <header>
+            <div class="container header-content">
+                <div>
+                    <h1>💰 CashFlow</h1>
+                    <p class="subtitle">Shared Expense Tracker</p>
+                </div>
+                <div class="header-user">
+                    <span id="current-user-name"></span>
+                    <button id="logout-btn" class="btn btn-small">Sign Out</button>
+                </div>
+            </div>
+        </header>
+
+        <nav class="container">
+            <button class="nav-btn active" data-tab="dashboard">📊 Dashboard</button>
+            <button class="nav-btn" data-tab="groups">👥 Groups</button>
+            <button class="nav-btn" data-tab="expenses">💸 Expenses</button>
+            <button class="nav-btn" data-tab="balances">⚖️ Balances</button>
+            <button class="nav-btn" data-tab="settle">✅ Settle</button>
+            <button class="nav-btn" data-tab="optimize">🧠 Optimize</button>
+        </nav>
+
+        <main class="container">
+            <!-- Dashboard Tab -->
+            <section id="tab-dashboard" class="tab active">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-users">0</div>
+                        <div class="stat-label">Users</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-groups">0</div>
+                        <div class="stat-label">Groups</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-expenses">0</div>
+                        <div class="stat-label">Expenses</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-total">0 ₽</div>
+                        <div class="stat-label">Total Spent</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-settled">0 ₽</div>
+                        <div class="stat-label">Total Settled</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Quick Add Expense</h2>
+                    <form id="quick-expense-form">
+                        <div class="form-row">
+                            <select id="qe-group" class="form-select">
+                                <option value="">No group (optional)</option>
+                            </select>
+                            <select id="qe-payer" required class="form-select">
+                                <option value="">Who paid?</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <input type="number" id="qe-amount" step="0.01" min="0.01" placeholder="Amount (₽)" required class="form-input">
+                            <select id="qe-category" class="form-select">
+                                <option value="food">🍔 Food</option>
+                                <option value="transport">🚗 Transport</option>
+                                <option value="housing">🏠 Housing</option>
+                                <option value="entertainment">🎬 Entertainment</option>
+                                <option value="utilities">💡 Utilities</option>
+                                <option value="groceries" selected>🛒 Groceries</option>
+                                <option value="other">📦 Other</option>
+                            </select>
+                        </div>
+                        <input type="text" id="qe-desc" placeholder="Description (optional)" class="form-input">
+                        <div id="qe-participants" class="participants-list">
+                            <p class="hint">Split with:</p>
+                        </div>
+                        <div class="form-row">
+                            <select id="qe-split-type" class="form-select">
+                                <option value="equal">Equal split</option>
+                                <option value="percent">By percentage</option>
+                                <option value="exact">By exact amounts</option>
+                            </select>
+                            <select id="qe-currency" class="form-select">
+                                <option value="RUB">₽ RUB</option>
+                                <option value="USD">$ USD</option>
+                                <option value="EUR">€ EUR</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary">➕ Add Expense</button>
+                    </form>
+                    <div id="qe-result" class="result hidden"></div>
+                </div>
+            </section>
+
+            <!-- Groups Tab -->
+            <section id="tab-groups" class="tab">
+                <div class="card">
+                    <h2>My Groups</h2>
+                    <form id="create-group-form" class="form-inline">
+                        <input type="text" id="cg-name" placeholder="Group name" required class="form-input">
+                        <input type="text" id="cg-desc" placeholder="Description (optional)" class="form-input">
+                        <button type="submit" class="btn btn-primary">➕ Create Group</button>
+                    </form>
+                    <div id="groups-list" class="items-list">
+                        <p class="empty-state">No groups yet. Create your first group!</p>
+                    </div>
+                </div>
+
+                <!-- Group detail view (hidden by default) -->
+                <div id="group-detail" class="card hidden">
+                    <button id="group-back-btn" class="btn btn-small">← Back to groups</button>
+                    <h2 id="gd-name"></h2>
+                    <p id="gd-desc" class="group-desc"></p>
+                    <div class="group-meta">
+                        <span id="gd-members"></span>
+                        <span id="gd-archived" class="badge badge-archived hidden">Archived</span>
+                    </div>
+
+                    <h3>Members</h3>
+                    <div id="gd-members-list" class="members-list"></div>
+
+                    <h3>Group Balances</h3>
+                    <div id="gd-balances" class="items-list"></div>
+
+                    <h3>Group Expenses</h3>
+                    <div id="gd-expenses" class="items-list"></div>
+                </div>
+            </section>
+
+            <!-- Expenses Tab -->
+            <section id="tab-expenses" class="tab">
+                <div class="card">
+                    <h2>Expense History</h2>
+                    <div class="filters">
+                        <select id="exp-group-filter" class="form-select">
+                            <option value="">All groups</option>
+                        </select>
+                        <select id="exp-category-filter" class="form-select">
+                            <option value="">All categories</option>
+                            <option value="food">🍔 Food</option>
+                            <option value="transport">🚗 Transport</option>
+                            <option value="housing">🏠 Housing</option>
+                            <option value="entertainment">🎬 Entertainment</option>
+                            <option value="utilities">💡 Utilities</option>
+                            <option value="groceries">🛒 Groceries</option>
+                            <option value="other">📦 Other</option>
+                        </select>
+                        <input type="date" id="exp-date-from" class="form-input">
+                        <input type="date" id="exp-date-to" class="form-input">
+                        <select id="exp-user-filter" class="form-select">
+                            <option value="">All users</option>
+                        </select>
+                        <button id="exp-apply-filters" class="btn btn-small">🔍 Filter</button>
+                    </div>
+                    <div id="expenses-list" class="items-list">
+                        <p class="empty-state">No expenses yet. Add your first one on the Dashboard!</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Balances Tab -->
+            <section id="tab-balances" class="tab">
+                <div class="card">
+                    <h2>Balance Overview</h2>
+                    <select id="balance-group" class="form-select">
+                        <option value="">All groups</option>
+                    </select>
+                    <select id="balance-user" class="form-select">
+                        <option value="">Select a user to see balances</option>
+                    </select>
+                    <div id="balances-list" class="items-list">
+                        <p class="empty-state">Select a user above</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2>Total Balance</h2>
+                    <div id="total-balance" class="total-balance">
+                        <p class="empty-state">Select a user to see total balance</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settle Tab -->
+            <section id="tab-settle" class="tab">
+                <div class="card">
+                    <h2>Settle a Debt</h2>
+                    <form id="settle-form">
+                        <select id="settle-payer" required class="form-select">
+                            <option value="">Who is paying?</option>
+                        </select>
+                        <select id="settle-creditor" required class="form-select">
+                            <option value="">To whom?</option>
+                        </select>
+                        <select id="settle-group" class="form-select">
+                            <option value="">Any group (optional)</option>
+                        </select>
+                        <input type="number" id="settle-amount" step="0.01" min="0.01" placeholder="Amount (₽, leave empty for full settlement)" class="form-input">
+                        <button type="submit" class="btn btn-success">✅ Settle</button>
+                    </form>
+                    <div id="settle-result" class="result hidden"></div>
+                </div>
+                <div class="card">
+                    <h2>Settlement History</h2>
+                    <div id="settlements-list" class="items-list">
+                        <p class="empty-state">No settlements yet</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Optimize Tab -->
+            <section id="tab-optimize" class="tab">
+                <div class="card">
+                    <h2>🧠 Optimized Debt Settlement</h2>
+                    <p class="hint">This algorithm minimizes the number of transactions needed to settle all debts.</p>
+                    <select id="optimize-group" class="form-select">
+                        <option value="">All groups</option>
+                    </select>
+                    <button id="optimize-btn" class="btn btn-primary">Calculate Optimal Plan</button>
+                    <div id="optimize-result" class="items-list">
+                        <p class="empty-state">Click the button to see the optimized settlement plan</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
