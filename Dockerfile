@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir --timeout 120 -i https://pypi.tuna.tsinghua.edu.c
 COPY api.py .
 COPY cashflow_api.py .
 COPY database.py .
+COPY auth_deps.py .
 COPY tech_support.py .
 COPY static/ ./static/
 

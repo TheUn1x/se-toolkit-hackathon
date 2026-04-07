@@ -686,16 +686,20 @@ class CashFlowAPI:
     def _create_percent_splits(self, session, expense, participant_ids, shares, amount):
         """Split by percentages. Payer's share is (100% - sum of others)%.
 
-        shares: dict of {user_id: percent} for participants only
+        shares: dict of {user_id: percent} for participants only.
+        If shares is None/empty, falls back to equal split.
         """
-        total_percent = sum(shares.values()) if shares else 0
+        # If no shares provided, fall back to equal split
+        if not shares:
+            self._create_equal_splits(session, expense, expense.payer_id, participant_ids, amount)
+            return
+
+        total_percent = sum(shares.values())
         payer_percent = 100.0 - total_percent
 
         if payer_percent < 0:
             raise ValueError("Сумма процентов не может превышать 100%")
 
-        # Calculate amounts
-        splits = []
         all_ids = list(participant_ids) + [expense.payer_id]
         raw_amounts = []
 
@@ -703,10 +707,8 @@ class CashFlowAPI:
             pct = shares.get(uid, 0)
             raw_amounts.append(amount * pct / 100.0)
 
-        # Payer's share
         raw_amounts.append(amount * payer_percent / 100.0)
 
-        # Distribute remainder
         final_amounts = distribute_remainder(amount, raw_amounts)
 
         for i, uid in enumerate(all_ids):
@@ -720,9 +722,15 @@ class CashFlowAPI:
     def _create_exact_splits(self, session, expense, participant_ids, shares, amount):
         """Split by exact amounts. Payer's share = total - sum(participant_shares).
 
-        shares: dict of {user_id: exact_amount} for participants only
+        shares: dict of {user_id: exact_amount} for participants only.
+        If shares is None/empty, falls back to equal split.
         """
-        total_participant_shares = sum(shares.values()) if shares else 0
+        # If no shares provided, fall back to equal split
+        if not shares:
+            self._create_equal_splits(session, expense, expense.payer_id, participant_ids, amount)
+            return
+
+        total_participant_shares = sum(shares.values())
         payer_share = amount - total_participant_shares
 
         if payer_share < -0.01:

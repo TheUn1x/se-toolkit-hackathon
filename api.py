@@ -1,9 +1,8 @@
 """
 CashFlow REST API - FastAPI backend with complete feature set
+JWT authentication, groups, expenses, balances, settlements
 """
 import os
-import hashlib
-import secrets
 from datetime import datetime, timedelta
 from typing import List, Optional
 from contextlib import asynccontextmanager
@@ -12,9 +11,10 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel
 
 from cashflow_api import CashFlowAPI, round_money
+from auth_deps import hash_password, verify_password, create_access_token, get_current_user, User as AuthUser
 
 
 # --- Pydantic Models ---
@@ -37,6 +37,12 @@ class UserResponse(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
     telegram_id: Optional[int] = None
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
 
 
 class GroupCreate(BaseModel):
@@ -162,10 +168,6 @@ class ApiResponse(BaseModel):
     data: Optional[dict] = None
 
 
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
-
-
 # --- API Setup ---
 
 db_path = os.getenv("CASHFLOW_DB", "cashflow.db")
@@ -174,9 +176,10 @@ cf = CashFlowAPI(db_path)
 # Create demo data if empty
 _users = cf.get_all_users()
 if not _users:
-    alice = cf.register_user(telegram_id=1001, first_name="Alice", username="alice", email="alice@example.com", password_hash=hash_password("password"))
-    bob = cf.register_user(telegram_id=1002, first_name="Bob", username="bob", email="bob@example.com", password_hash=hash_password("password"))
-    charlie = cf.register_user(telegram_id=1003, first_name="Charlie", username="charlie", email="charlie@example.com", password_hash=hash_password("password"))
+    demo_pw = "$2b$12$LJ3m4ys3Lk0qJxqR5KGOuOZqKqR5KGOuOZqKqR5KGOuOZqKqR5KGOu"  # bcrypt placeholder
+    alice = cf.register_user(telegram_id=1001, first_name="Alice", username="alice", email="alice@example.com", password_hash=demo_pw)
+    bob = cf.register_user(telegram_id=1002, first_name="Bob", username="bob", email="bob@example.com", password_hash=demo_pw)
+    charlie = cf.register_user(telegram_id=1003, first_name="Charlie", username="charlie", email="charlie@example.com", password_hash=demo_pw)
 
     # Create a demo group
     group = cf.create_group("Квартира", alice.id, "Расходы на квартиру")
@@ -237,9 +240,9 @@ def health_check():
 
 # ==================== Auth ====================
 
-@app.post("/api/auth/register", response_model=UserResponse)
+@app.post("/api/auth/register", response_model=TokenResponse)
 def register(user: UserCreate):
-    """Register a new user with email/password"""
+    """Register a new user with email/password and get JWT token"""
     if not user.email:
         raise HTTPException(status_code=400, detail="Email is required")
     if not user.password:
@@ -258,28 +261,50 @@ def register(user: UserCreate):
         email=user.email,
         password_hash=pw_hash,
     )
-
-    # Ensure settings
     cf.get_or_create_settings(u.id)
 
-    return UserResponse(id=u.id, name=u.first_name, username=u.username, email=u.email)
+    token = create_access_token({"sub": u.id, "email": u.email})
+    return TokenResponse(
+        access_token=token,
+        user=UserResponse(id=u.id, name=u.first_name, username=u.username, email=u.email),
+    )
 
 
-@app.post("/api/auth/login", response_model=UserResponse)
+@app.post("/api/auth/login", response_model=TokenResponse)
 def login(creds: UserLogin):
-    """Login with email/password"""
+    """Login with email/password and get JWT token"""
     user = cf.get_user_by_email(creds.email)
     if not user or not user.password_hash:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    if user.password_hash != hash_password(creds.password):
+    try:
+        if not verify_password(creds.password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+    except Exception:
+        # Hash format error (legacy data) — treat as invalid credentials
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    return UserResponse(id=user.id, name=user.first_name, username=user.username, email=user.email)
+
+    token = create_access_token({"sub": user.id, "email": user.email})
+    return TokenResponse(
+        access_token=token,
+        user=UserResponse(id=user.id, name=user.first_name, username=user.username, email=user.email),
+    )
 
 
 # ==================== Users ====================
 
+@app.get("/api/users/me", response_model=UserResponse)
+def get_current_user_info(current_user: AuthUser = Depends(get_current_user)):
+    """Get current authenticated user"""
+    return UserResponse(
+        id=current_user.id, name=current_user.first_name,
+        username=current_user.username, email=current_user.email,
+        telegram_id=current_user.telegram_id,
+    )
+
+
 @app.get("/api/users", response_model=List[UserResponse])
-def get_users():
+def get_users(current_user: AuthUser = Depends(get_current_user)):
+    """Get all registered users (auth required)"""
     users = cf.get_all_users()
     return [
         UserResponse(id=u.id, name=u.first_name, username=u.username, email=u.email, telegram_id=u.telegram_id)
@@ -288,25 +313,20 @@ def get_users():
 
 
 @app.post("/api/users", response_model=UserResponse)
-def create_user(user: UserCreate):
-    """Register a new user (simple, no auth)"""
-    existing = cf.get_all_users()
-    max_tid = max((u.telegram_id or 0 for u in existing), default=0)
-    telegram_id = max_tid + 10000
-
+def create_user(user: UserCreate, current_user: AuthUser = Depends(get_current_user)):
+    """Register a new user (auth required, uses creator's context)"""
     u = cf.register_user(
-        telegram_id=telegram_id,
         first_name=user.name,
         username=user.username,
         email=user.email,
-        password_hash=hash_password(user.password) if user.password else None,
     )
     cf.get_or_create_settings(u.id)
     return UserResponse(id=u.id, name=u.first_name, username=u.username, email=u.email)
 
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)
-def get_user(user_id: int):
+def get_user(user_id: int, current_user: AuthUser = Depends(get_current_user)):
+    """Get user by internal ID (auth required)"""
     u = cf.get_user_by_internal_id(user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
@@ -340,37 +360,12 @@ def link_telegram_account(data: LinkCodeConsume):
 # ==================== Groups ====================
 
 @app.post("/api/groups", response_model=GroupResponse)
-def create_group(group: GroupCreate):
-    """Create a new group"""
+def create_group(group: GroupCreate, current_user: AuthUser = Depends(get_current_user)):
+    """Create a new group (auth required, user becomes creator)"""
     if not group.name.strip():
         raise HTTPException(status_code=400, detail="Group name is required")
 
-    # Auto-create a creator user if first user doesn't exist (for web-only use)
-    all_users = cf.get_all_users()
-    if not all_users:
-        raise HTTPException(status_code=400, detail="Create a user first")
-
-    creator_id = all_users[0].id  # Default to first user for now (would be auth-based in production)
-
-    g = cf.create_group(group.name, creator_id, group.description)
-    if not g:
-        raise HTTPException(status_code=500, detail="Failed to create group")
-
-    return GroupResponse(
-        id=g.id, name=g.name, description=g.description,
-        created_by=g.created_by, is_archived=g.is_archived,
-        member_count=1, created_at=str(g.created_at),
-    )
-
-
-@app.post("/api/groups", response_model=GroupResponse)
-def create_group_with_creator(group: GroupCreate, creator_id: int = 1):
-    """Create a new group with specified creator"""
-    creator = cf.get_user_by_internal_id(creator_id)
-    if not creator:
-        raise HTTPException(status_code=404, detail="Creator not found")
-
-    g = cf.create_group(group.name, creator_id, group.description)
+    g = cf.create_group(group.name, current_user.id, group.description)
     if not g:
         raise HTTPException(status_code=500, detail="Failed to create group")
 
@@ -382,9 +377,9 @@ def create_group_with_creator(group: GroupCreate, creator_id: int = 1):
 
 
 @app.get("/api/groups", response_model=List[GroupResponse])
-def get_user_groups(user_id: int):
-    """Get all groups for a user"""
-    groups = cf.get_user_groups(user_id)
+def get_user_groups(current_user: AuthUser = Depends(get_current_user)):
+    """Get all groups for the current user"""
+    groups = cf.get_user_groups(current_user.id)
     result = []
     for g in groups:
         members = cf.get_group_members(g.id)
@@ -397,8 +392,8 @@ def get_user_groups(user_id: int):
 
 
 @app.get("/api/groups/{group_id}", response_model=GroupDetailResponse)
-def get_group(group_id: int):
-    """Get group details with members"""
+def get_group(group_id: int, current_user: AuthUser = Depends(get_current_user)):
+    """Get group details with members (auth required)"""
     g = cf.get_group(group_id)
     if not g:
         raise HTTPException(status_code=404, detail="Group not found")
@@ -413,8 +408,8 @@ def get_group(group_id: int):
 
 
 @app.post("/api/groups/{group_id}/members")
-def add_group_member(group_id: int, req: AddMemberRequest):
-    """Add a member to a group"""
+def add_group_member(group_id: int, req: AddMemberRequest, current_user: AuthUser = Depends(get_current_user)):
+    """Add a member to a group (auth required)"""
     success, message = cf.add_group_member(group_id, req.user_id)
     if not success:
         raise HTTPException(status_code=400, detail=message)
@@ -422,8 +417,8 @@ def add_group_member(group_id: int, req: AddMemberRequest):
 
 
 @app.delete("/api/groups/{group_id}/members/{user_id}")
-def remove_group_member(group_id: int, user_id: int):
-    """Remove a member from a group"""
+def remove_group_member(group_id: int, user_id: int, current_user: AuthUser = Depends(get_current_user)):
+    """Remove a member from a group (auth required)"""
     success, message = cf.remove_group_member(group_id, user_id)
     if not success:
         raise HTTPException(status_code=400, detail=message)
@@ -431,9 +426,9 @@ def remove_group_member(group_id: int, user_id: int):
 
 
 @app.post("/api/groups/{group_id}/archive")
-def archive_group(group_id: int, user_id: int):
-    """Archive a group"""
-    success, message = cf.archive_group(group_id, user_id)
+def archive_group(group_id: int, current_user: AuthUser = Depends(get_current_user)):
+    """Archive a group (auth required, creator only)"""
+    success, message = cf.archive_group(group_id, current_user.id)
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {"success": True, "message": message}
@@ -442,24 +437,25 @@ def archive_group(group_id: int, user_id: int):
 # ==================== Expenses ====================
 
 @app.get("/api/expenses", response_model=List[ExpenseResponse])
-def get_expenses(limit: int = 50, user_id: int = None, group_id: int = None,
-                   category: str = None, date_from: str = None, date_to: str = None):
-    """Get expenses with optional filters"""
+def get_expenses(
+    limit: int = 50, group_id: int = None,
+    category: str = None, date_from: str = None, date_to: str = None,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    """Get expenses for current user with optional filters"""
     date_from_dt = datetime.fromisoformat(date_from) if date_from else None
     date_to_dt = datetime.fromisoformat(date_to) if date_to else None
 
-    if user_id:
-        expenses = cf.get_user_expenses(
-            user_id, limit=limit, group_id=group_id,
-            category=category, date_from=date_from_dt, date_to=date_to_dt
-        )
-    elif group_id:
+    if group_id:
         expenses = cf.get_group_expenses(
             group_id, limit=limit, category=category,
             date_from=date_from_dt, date_to=date_to_dt
         )
     else:
-        expenses = cf.get_all_expenses(limit=limit)
+        expenses = cf.get_user_expenses(
+            current_user.id, limit=limit, group_id=group_id,
+            category=category, date_from=date_from_dt, date_to=date_to_dt
+        )
 
     result = []
     for e in expenses:
@@ -498,8 +494,8 @@ def get_expenses(limit: int = 50, user_id: int = None, group_id: int = None,
 
 
 @app.post("/api/expenses", response_model=dict)
-def add_expense(expense: ExpenseCreate):
-    """Add a shared expense"""
+def add_expense(expense: ExpenseCreate, current_user: AuthUser = Depends(get_current_user)):
+    """Add a shared expense (auth required)"""
     expense_date = None
     if expense.expense_date:
         try:
@@ -549,8 +545,8 @@ def add_expense(expense: ExpenseCreate):
 
 
 @app.put("/api/expenses/{expense_id}")
-def edit_expense(expense_id: int, data: ExpenseEdit):
-    """Edit an expense"""
+def edit_expense(expense_id: int, data: ExpenseEdit, current_user: AuthUser = Depends(get_current_user)):
+    """Edit an expense (auth required)"""
     expense_date = None
     if data.expense_date:
         try:
@@ -574,8 +570,8 @@ def edit_expense(expense_id: int, data: ExpenseEdit):
 
 
 @app.delete("/api/expenses/{expense_id}")
-def delete_expense(expense_id: int):
-    """Delete an expense"""
+def delete_expense(expense_id: int, current_user: AuthUser = Depends(get_current_user)):
+    """Delete an expense (auth required)"""
     success, message = cf.delete_expense(expense_id)
     if not success:
         raise HTTPException(status_code=400, detail=message)
@@ -585,8 +581,8 @@ def delete_expense(expense_id: int):
 # ==================== Balances ====================
 
 @app.get("/api/balances/{user_id}", response_model=List[BalanceResponse])
-def get_balances(user_id: int, group_id: int = None):
-    """Get balance overview for a user"""
+def get_balances(user_id: int, group_id: int = None, current_user: AuthUser = Depends(get_current_user)):
+    """Get balance overview for a user (auth required)"""
     user = cf.get_user_by_internal_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -629,27 +625,24 @@ def get_group_balances(group_id: int):
 
 
 @app.get("/api/balances/total/{user_id}")
-def get_user_total_balance(user_id: int):
+def get_user_total_balance(user_id: int, current_user: AuthUser = Depends(get_current_user)):
     """Get user's total balance across all groups"""
-    user = cf.get_user_by_internal_id(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
     return cf.get_user_total_balance(user_id)
 
 
 # ==================== Optimized Settlements ====================
 
 @app.get("/api/optimize-settlements")
-def get_optimized_settlements(user_id: int = None, group_id: int = None):
-    """Get optimized settlement plan (minimum transactions)"""
-    return cf.get_optimized_settlements(user_id=user_id, group_id=group_id)
+def get_optimized_settlements(group_id: int = None, current_user: AuthUser = Depends(get_current_user)):
+    """Get optimized settlement plan for current user (minimum transactions)"""
+    return cf.get_optimized_settlements(user_id=current_user.id, group_id=group_id)
 
 
 # ==================== Settlements ====================
 
 @app.post("/api/settle", response_model=SettlementResponse)
-def settle_balance(settlement: SettlementCreate):
-    """Record a settlement payment"""
+def settle_balance(settlement: SettlementCreate, current_user: AuthUser = Depends(get_current_user)):
+    """Record a settlement payment (auth required)"""
     success, message = cf.settle_balance(
         user1_id=settlement.payer_id,
         user2_id=settlement.creditor_id,
@@ -661,9 +654,9 @@ def settle_balance(settlement: SettlementCreate):
 
 
 @app.get("/api/settlements", response_model=List[SettlementHistoryItem])
-def get_settlement_history(user_id: int = None, group_id: int = None, limit: int = 50):
-    """Get settlement history"""
-    settlements = cf.get_settlement_history(user_id=user_id, group_id=group_id, limit=limit)
+def get_settlement_history(group_id: int = None, limit: int = 50, current_user: AuthUser = Depends(get_current_user)):
+    """Get settlement history for current user"""
+    settlements = cf.get_settlement_history(user_id=current_user.id, group_id=group_id, limit=limit)
     return [
         SettlementHistoryItem(
             id=s.id,
@@ -711,8 +704,8 @@ def get_overdue_debts(days: int = 7):
 # ==================== Statistics ====================
 
 @app.get("/api/stats")
-def get_stats():
-    """Get overall statistics"""
+def get_stats(current_user: AuthUser = Depends(get_current_user)):
+    """Get overall statistics (auth required)"""
     session = cf.db.get_session()
     try:
         from sqlalchemy import text
