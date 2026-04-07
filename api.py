@@ -409,11 +409,43 @@ def get_group(group_id: int, current_user: AuthUser = Depends(get_current_user))
 
 @app.post("/api/groups/{group_id}/members")
 def add_group_member(group_id: int, req: AddMemberRequest, current_user: AuthUser = Depends(get_current_user)):
-    """Add a member to a group (auth required)"""
+    """Add a member to a group by user ID (auth required)"""
     success, message = cf.add_group_member(group_id, req.user_id)
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {"success": True, "message": message}
+
+
+class AddMemberByEmail(BaseModel):
+    email: str
+    name: Optional[str] = None
+
+
+@app.post("/api/groups/{group_id}/members-by-email")
+def add_member_by_email(group_id: int, req: AddMemberByEmail, current_user: AuthUser = Depends(get_current_user)):
+    """Add a member to a group by email. Creates user if not found."""
+    if not req.email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    # Find existing user by email
+    user = cf.get_user_by_email(req.email)
+
+    if not user:
+        # Create new user
+        pw_hash = "$2b$12$placeholder"  # Set password later
+        user = cf.register_user(
+            first_name=req.name or req.email.split('@')[0],
+            email=req.email,
+            password_hash=pw_hash,
+        )
+        cf.get_or_create_settings(user.id)
+
+    # Add to group
+    success, message = cf.add_group_member(group_id, user.id)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    return {"success": True, "message": message, "user_id": user.id, "user_name": user.first_name}
 
 
 @app.delete("/api/groups/{group_id}/members/{user_id}")
