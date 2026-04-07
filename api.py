@@ -302,14 +302,52 @@ def get_current_user_info(current_user: AuthUser = Depends(get_current_user)):
     )
 
 
+class UserSearchResult(BaseModel):
+    id: int
+    name: str
+    email: Optional[str] = None
+
+
 @app.get("/api/users", response_model=List[UserResponse])
-def get_users(current_user: AuthUser = Depends(get_current_user)):
-    """Get all registered users (auth required)"""
-    users = cf.get_all_users()
+def get_my_group_members(current_user: AuthUser = Depends(get_current_user)):
+    """Get ONLY users who share a group with the current user (not all users)"""
+    session = cf.db.get_session()
+    try:
+        from sqlalchemy import text
+        # Find all user IDs who share any group with current_user
+        rows = session.execute(text("""
+            SELECT DISTINCT u.id, u.first_name, u.username, u.email, u.telegram_id
+            FROM users u
+            JOIN group_members gm1 ON gm1.user_id = u.id
+            JOIN group_members gm2 ON gm2.group_id = gm1.group_id
+            WHERE gm2.user_id = :uid AND u.id != :uid
+        """), {"uid": current_user.id}).fetchall()
+    finally:
+        session.close()
+
     return [
-        UserResponse(id=u.id, name=u.first_name, username=u.username, email=u.email, telegram_id=u.telegram_id)
-        for u in users
+        UserResponse(id=r[0], name=r[1], username=r[2], email=r[3], telegram_id=r[4])
+        for r in rows
     ]
+
+
+@app.get("/api/users/search")
+def search_users(query: str, current_user: AuthUser = Depends(get_current_user)):
+    """Search users by email or name (for inviting to groups)"""
+    if not query or len(query) < 2:
+        return []
+    session = cf.db.get_session()
+    try:
+        from sqlalchemy import text
+        rows = session.execute(text("""
+            SELECT id, first_name, email FROM users
+            WHERE email LIKE :q OR first_name LIKE :q
+            LIMIT 10
+        """), {"q": f"%{query}%"}).fetchall()
+    finally:
+        session.close()
+
+    return [UserSearchResult(id=r[0], name=r[1], email=r[2]) for r in rows]
 
 
 @app.post("/api/users", response_model=UserResponse)

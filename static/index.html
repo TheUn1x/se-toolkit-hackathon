@@ -157,10 +157,14 @@
                     <!-- Add member by email -->
                     <h3>Добавить участника</h3>
                     <form id="gd-add-member-form" class="form-row">
-                        <input type="text" id="gd-add-email" placeholder="Email участника" required class="form-input">
-                        <input type="text" id="gd-add-name" placeholder="Имя (если новый)" class="form-input">
-                        <button type="submit" class="btn btn-primary" style="width:auto;">Добавить</button>
+                        <input type="text" id="gd-add-email" placeholder="Email" required class="form-input">
+                        <input type="text" id="gd-add-name" placeholder="Имя" class="form-input">
+                        <button type="submit" class="btn btn-primary" style="width:auto;">По email</button>
                     </form>
+                    <div class="form-row" style="margin-top:8px;">
+                        <input type="text" id="gd-search-input" placeholder="Поиск по имени/email..." class="form-input">
+                    </div>
+                    <div id="gd-search-results"></div>
 
                     <!-- Members -->
                     <h3>Участники</h3>

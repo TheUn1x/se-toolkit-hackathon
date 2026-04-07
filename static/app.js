@@ -1,10 +1,9 @@
-/* CashFlow — Web App Logic (Complete, Logical) */
+/* CashFlow — Web App Logic (Privacy-aware) */
 
 const API = window.location.origin;
 
 // ===== STATE =====
-let users = [];
-let groups = [];
+let myGroupMembers = []; // ONLY users who share groups with me
 let currentUser = null;
 let authToken = localStorage.getItem('cf_token') || null;
 let currentGroupId = null;
@@ -52,7 +51,7 @@ function toast(msg, type = 'success') { const t = el('toast'); if (!t) return; t
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', async () => {
-    setupAuthForms(); // Always first
+    setupAuthForms();
     if (authToken) {
         try { currentUser = await apiGet('/api/users/me'); showApp(); }
         catch { showAuth(); }
@@ -67,7 +66,7 @@ function showApp() {
 }
 
 async function initApp() {
-    // Tabs and forms MUST be set up IMMEDIATELY — before any async loads
+    // Setup UI handlers immediately — before any data loads
     setupTabs();
     setupExpenseForm();
     setupSettleForm();
@@ -76,9 +75,10 @@ async function initApp() {
     setupOptimizeBtn();
     setupFilters();
     setupGroupActions();
+    setupMemberSearch();
 
-    // Data loads in background
-    await Promise.allSettled([loadUsers(), loadGroups(), loadStats(), loadDashboard()]);
+    // Load data in background
+    await Promise.allSettled([loadMyGroupMembers(), loadGroups(), loadStats(), loadDashboard()]);
 }
 
 // ===== AUTH =====
@@ -122,22 +122,34 @@ function setupTabs() {
     });
 }
 
-// ===== USERS =====
-async function loadUsers() {
-    try { users = await apiGet('/api/users'); } catch { users = []; }
-    populateUserSelects();
+// ===== MY GROUP MEMBERS (only these users are visible to me) =====
+async function loadMyGroupMembers() {
+    try {
+        myGroupMembers = await apiGet('/api/users'); // Now returns only shared group members
+    } catch { myGroupMembers = []; }
+    populateExpenseUserSelects();
+    populateSettleUserSelects();
 }
 
-function populateUserSelects() {
-    ['qe-payer','settle-payer','settle-creditor'].forEach(id => {
-        const sel = el(id); if (!sel) return;
-        const ph = { 'qe-payer':'Кто заплатил?', 'settle-payer':'Кто платит?', 'settle-creditor':'Кому?' };
-        sel.innerHTML = `<option value="">${ph[id] || ''}</option>`;
-        users.forEach(u => { sel.innerHTML += `<option value="${u.id}">${esc(u.name)}</option>`; });
+function populateExpenseUserSelects() {
+    // Payer dropdown: show current user + group members
+    const sel = el('qe-payer');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Кто заплатил?</option>';
+    sel.innerHTML += `<option value="${currentUser.id}">${esc(currentUser.name)} (вы)</option>`;
+    myGroupMembers.forEach(u => {
+        sel.innerHTML += `<option value="${u.id}">${esc(u.name)}</option>`;
     });
 }
 
+function populateSettleUserSelects() {
+    // Settle dropdowns: only people I have balances with (will be populated from balances)
+    // This is done in loadSettleTab
+}
+
 // ===== GROUPS =====
+let groups = [];
+
 async function loadGroups() {
     try {
         groups = await apiGet('/api/groups');
@@ -202,16 +214,17 @@ async function openGroupDetail(groupId) {
         if (ml) {
             ml.innerHTML = (group.members || []).map(m => `
                 <div class="member-item">
-                    <span>${esc(m.name)} ${esc(m.email ? '(' + m.email + ')' : '')}</span>
+                    <span>${esc(m.name)}</span>
                     <span class="badge ${m.id === group.created_by ? 'badge-creator' : 'badge-member'}">
                         ${m.id === group.created_by ? 'Создатель' : 'Участник'}
                     </span>
                 </div>`).join('');
         }
 
-        // Clear add member form
+        // Reset add member form
         el('gd-add-email').value = '';
         el('gd-add-name').value = '';
+        el('gd-search-results').innerHTML = '';
 
         // Balances
         try {
@@ -230,7 +243,7 @@ async function openGroupDetail(groupId) {
             renderExpensesIn(expenses, 'gd-expenses');
         } catch { setHtml('gd-expenses', '<p class="empty-state">Ошибка</p>'); }
 
-        // Show/hide leave & archive buttons
+        // Show/hide buttons
         const isCreator = group.created_by === currentUser.id;
         const leaveBtn = el('gd-leave-btn');
         const archiveBtn = el('gd-archive-btn');
@@ -256,17 +269,54 @@ function setupAddMemberForm() {
             const name = val('gd-add-name') || null;
             const r = await apiPost(`/api/groups/${currentGroupId}/members-by-email`, { email, name });
             toast(r.message, 'success');
-            openGroupDetail(currentGroupId); // refresh
-            loadUsers(); // refresh user list
+            openGroupDetail(currentGroupId);
         } catch (err) { toast(err.message, 'error'); }
     });
 }
 
-// ===== GROUP ACTIONS (leave, archive) =====
+// ===== MEMBER SEARCH =====
+function setupMemberSearch() {
+    const input = el('gd-search-input');
+    let timer;
+    if (!input) return;
+
+    input.addEventListener('input', () => {
+        clearTimeout(timer);
+        const query = input.value.trim();
+        if (query.length < 2) { el('gd-search-results').innerHTML = ''; return; }
+        timer = setTimeout(async () => {
+            try {
+                const results = await apiGet(`/api/users/search?query=${encodeURIComponent(query)}`);
+                const container = el('gd-search-results');
+                if (!results.length) {
+                    container.innerHTML = '<p class="empty-state">Никого не найдено</p>';
+                    return;
+                }
+                container.innerHTML = results.map(u => `
+                    <div class="member-item">
+                        <span>${esc(u.name)} (${esc(u.email)})</span>
+                        <button class="btn btn-small" onclick="searchAddMember(${u.id})">Добавить</button>
+                    </div>
+                `).join('');
+            } catch { el('gd-search-results').innerHTML = '<p class="empty-state">Ошибка поиска</p>'; }
+        }, 400);
+    });
+}
+
+// Add member from search results
+window.searchAddMember = async function(userId) {
+    try {
+        await apiPost(`/api/groups/${currentGroupId}/members`, { user_id: userId });
+        toast('Участник добавлен!', 'success');
+        openGroupDetail(currentGroupId);
+    } catch (err) { toast(err.message, 'error'); }
+};
+
+// ===== GROUP ACTIONS =====
 function setupGroupActions() {
     el('gd-leave-btn')?.addEventListener('click', async () => {
         if (!currentUser || !currentGroupId) return;
-        if (!confirm('Вы уверены что хотите покинуть эту группу?')) return;
+        if (!confirm('Покинуть эту группу?')) return;
         try {
             await apiDelete(`/api/groups/${currentGroupId}/members/${currentUser.id}`);
             toast('Вы покинули группу', 'success');
@@ -323,12 +373,6 @@ async function loadDashboard() {
             <div class="bal-row"><span class="bal-label">Я должен:</span><span class="bal-val red">${total.total_owes.toFixed(2)} ₽</span></div>
             <div class="bal-row"><span class="bal-label">Нетто:</span><span class="bal-val ${total.net >= 0 ? 'green' : 'red'}">${total.net.toFixed(2)} ₽</span></div>`);
     } catch { setHtml('my-balance', '<p class="empty-state">Ошибка загрузки</p>'); }
-    try {
-        const s = await apiGet('/api/stats');
-        setTxt('stat-groups', s.groups); setTxt('stat-expenses', s.expenses);
-        setTxt('stat-total', s.total_expenses.toFixed(2) + ' ₽');
-        setTxt('stat-settled', s.total_settled.toFixed(2) + ' ₽');
-    } catch {}
 }
 
 // ===== EXPENSE FORM =====
@@ -378,32 +422,31 @@ function updateParticipants() {
     const payerId = parseInt(val('qe-payer') || 0);
     const container = el('qe-participants'); if (!container) return;
 
-    let list;
     if (groupId) {
+        // Group selected: show group members (excluding payer)
         const group = groups.find(g => g.id === groupId);
-        // If group selected: use group members, auto-add payer if not in group
         if (group && group.members && group.members.length > 0) {
-            // Check if payer is in group; if not, show a note
             const payerInGroup = group.members.some(m => m.id === payerId);
-            if (!payerInGroup) {
-                container.innerHTML = `<p class="hint" style="color:#fc8181;">⚠️ Плательщик не в этой группе. Участники:</p>`
-                    + group.members.filter(m => m.id !== payerId).map(u =>
-                        `<label class="participant-checkbox"><input type="checkbox" value="${u.id}" checked> ${esc(u.name)}</label>`
-                    ).join('');
+            if (!payerInGroup && payerId !== currentUser.id) {
+                container.innerHTML = '<p class="hint" style="color:#fc8181;">⚠️ Плательщик не в этой группе</p>';
                 return;
             }
-            list = group.members.filter(m => m.id !== payerId);
+            const list = group.members.filter(m => m.id !== payerId);
+            container.innerHTML = '<p class="hint">Разделить с:</p>'
+                + (list.length ? list.map(u => `<label class="participant-checkbox"><input type="checkbox" value="${u.id}" checked> ${esc(u.name)}</label>`).join('')
+                : '<p class="empty-state">В группе только вы. Добавьте участников.</p>');
         } else {
-            // Group has no members yet — show all users except payer
-            list = users.filter(u => u.id !== payerId);
+            container.innerHTML = '<p class="empty-state">В группе нет участников. Добавьте их на вкладке «Группы».</p>';
         }
     } else {
-        // No group — all users except payer
-        list = users.filter(u => u.id !== payerId);
+        // No group: show only group members (people I share groups with)
+        if (myGroupMembers.length === 0) {
+            container.innerHTML = '<p class="empty-state">Создайте группу и пригласите участников</p>';
+        } else {
+            container.innerHTML = '<p class="hint">Разделить с:</p>'
+                + myGroupMembers.filter(u => u.id !== payerId).map(u => `<label class="participant-checkbox"><input type="checkbox" value="${u.id}" checked> ${esc(u.name)}</label>`).join('');
+        }
     }
-
-    container.innerHTML = '<p class="hint">Разделить с:</p>'
-        + list.map(u => `<label class="participant-checkbox"><input type="checkbox" value="${u.id}" checked> ${esc(u.name)}</label>`).join('');
 }
 
 // ===== EXPENSES =====
@@ -513,8 +556,8 @@ async function loadSettlementHistory() {
         const c = el('settlements-list'); if (!c) return;
         if (!settlements.length) { c.innerHTML = '<p class="empty-state">Погашений нет</p>'; return; }
         c.innerHTML = settlements.map(s => {
-            const payer = users.find(u => u.id === s.payer_id);
-            const creditor = users.find(u => u.id === s.creditor_id);
+            const payer = myGroupMembers.find(u => u.id === s.payer_id);
+            const creditor = myGroupMembers.find(u => u.id === s.creditor_id);
             return `<div class="balance-item"><span class="balance-name">${esc(payer?.name || '?')} → ${esc(creditor?.name || '?')}</span><span class="balance-amount owed">${s.amount.toFixed(2)} ₽</span></div>`;
         }).join('');
     } catch { setHtml('settlements-list', '<p class="empty-state">Ошибка</p>'); }
@@ -571,3 +614,4 @@ function setupOptimizeBtn() {
 
 // ===== GLOBAL =====
 window.openGroupDetail = openGroupDetail;
+window.searchAddMember = window.searchAddMember || searchAddMember;
