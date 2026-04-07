@@ -65,6 +65,9 @@ function doLogout() {
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', async () => {
+    // Always setup auth forms first — regardless of token state
+    setupAuthForms();
+
     if (authToken) {
         try {
             currentUser = await apiGet('/api/users/me');
@@ -88,10 +91,8 @@ function showApp() {
 }
 
 async function initApp() {
-    // Load everything in parallel
     await Promise.allSettled([loadUsers(), loadGroups(), loadStats(), loadDashboard()]);
     setupTabs();
-    setupAuthForms();
     setupExpenseForm();
     setupSettleForm();
     setupGroupForm();
@@ -105,8 +106,12 @@ function val(id) { const e = el(id); return e ? e.value : ''; }
 function setTxt(id, txt) { const e = el(id); if (e) e.textContent = txt; }
 function setHtml(id, html) { const e = el(id); if (e) e.innerHTML = html; }
 
+let authFormsSetup = false;
+
 // ===== AUTH FORMS =====
 function setupAuthForms() {
+    if (authFormsSetup) return;
+    authFormsSetup = true;
     el('show-register')?.addEventListener('click', e => {
         e.preventDefault();
         el('login-form').classList.add('hidden');
