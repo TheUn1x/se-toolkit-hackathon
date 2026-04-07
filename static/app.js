@@ -1,30 +1,23 @@
-/* CashFlow — Web App JavaScript */
+/* CashFlow — Complete Web App Logic */
 
 const API = window.location.origin;
 
-// State
+// ===== STATE =====
 let users = [];
 let groups = [];
 let currentUser = null;
-let authToken = localStorage.getItem('cashflow_token') || null;
+let authToken = localStorage.getItem('cf_token') || null;
+let currentGroupId = null; // for group detail view
 
-// --- API Helpers with proper error handling ---
+// ===== API HELPERS =====
 async function apiGet(url) {
     const headers = {};
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-    let res;
-    try {
-        res = await fetch(`${API}${url}`, { headers });
-    } catch (e) {
-        throw new Error('Network error — is the server running?');
-    }
+    const res = await fetch(API + url, { headers });
     if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        if (res.status === 401) {
-            logoutAndRedirect();
-            throw new Error('Session expired. Please log in again.');
-        }
-        throw new Error(err.detail || `Request failed (${res.status})`);
+        if (res.status === 401) { doLogout(); throw new Error('Сессия истекла. Войдите заново.'); }
+        throw new Error(err.detail || `Ошибка (${res.status})`);
     }
     return res.json();
 }
@@ -32,23 +25,11 @@ async function apiGet(url) {
 async function apiPost(url, data) {
     const headers = { 'Content-Type': 'application/json' };
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-    let res;
-    try {
-        res = await fetch(`${API}${url}`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(data),
-        });
-    } catch (e) {
-        throw new Error('Network error — is the server running?');
-    }
+    const res = await fetch(API + url, { method: 'POST', headers, body: JSON.stringify(data) });
     if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        if (res.status === 401) {
-            logoutAndRedirect();
-            throw new Error('Session expired. Please log in again.');
-        }
-        throw new Error(err.detail || `Request failed (${res.status})`);
+        if (res.status === 401) { doLogout(); throw new Error('Сессия истекла. Войдите заново.'); }
+        throw new Error(err.detail || `Ошибка (${res.status})`);
     }
     return res.json();
 }
@@ -56,12 +37,10 @@ async function apiPost(url, data) {
 async function apiPut(url, data) {
     const headers = { 'Content-Type': 'application/json' };
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-    const res = await fetch(`${API}${url}`, {
-        method: 'PUT', headers, body: JSON.stringify(data),
-    });
+    const res = await fetch(API + url, { method: 'PUT', headers, body: JSON.stringify(data) });
     if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        throw new Error(err.detail || `Request failed (${res.status})`);
+        throw new Error(err.detail || `Ошибка (${res.status})`);
     }
     return res.json();
 }
@@ -69,368 +48,445 @@ async function apiPut(url, data) {
 async function apiDelete(url) {
     const headers = {};
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-    const res = await fetch(`${API}${url}`, { method: 'DELETE', headers });
+    const res = await fetch(API + url, { method: 'DELETE', headers });
     if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        throw new Error(err.detail || `Request failed (${res.status})`);
+        throw new Error(err.detail || `Ошибка (${res.status})`);
     }
     return res.json();
 }
 
-function logoutAndRedirect() {
+function doLogout() {
     authToken = null;
     currentUser = null;
-    localStorage.removeItem('cashflow_token');
+    localStorage.removeItem('cf_token');
     showAuth();
 }
 
-// --- Init ---
+// ===== INIT =====
 document.addEventListener('DOMContentLoaded', async () => {
     if (authToken) {
         try {
             currentUser = await apiGet('/api/users/me');
             showApp();
-        } catch (e) {
-            showAuth();
-        }
+        } catch { showAuth(); }
     } else {
         showAuth();
     }
-    setupAuthForms();
 });
 
-// --- Auth ---
 function showAuth() {
-    document.getElementById('auth-screen').classList.remove('hidden');
-    document.getElementById('app-screen').classList.add('hidden');
+    el('auth-screen').classList.remove('hidden');
+    el('app-screen').classList.add('hidden');
 }
 
 function showApp() {
-    document.getElementById('auth-screen').classList.add('hidden');
-    document.getElementById('app-screen').classList.remove('hidden');
-    if (currentUser) {
-        document.getElementById('current-user-name').textContent = currentUser.name;
-    }
+    el('auth-screen').classList.add('hidden');
+    el('app-screen').classList.remove('hidden');
+    el('current-user-name').textContent = currentUser.name;
     initApp();
 }
 
 async function initApp() {
-    await Promise.allSettled([
-        loadUsers(),
-        loadGroups(),
-        loadStats(),
-        loadExpenses(),
-        loadSettlements(),
-    ]);
-    setupForms();
-    setupGroupForm();
-    setupOptimizeButton();
+    // Load everything in parallel
+    await Promise.allSettled([loadUsers(), loadGroups(), loadStats(), loadDashboard()]);
     setupTabs();
+    setupAuthForms();
+    setupExpenseForm();
+    setupSettleForm();
+    setupGroupForm();
+    setupOptimizeBtn();
+    setupFilters();
 }
 
+// ===== ELEMENT SHORTCUT =====
+function el(id) { return document.getElementById(id); }
+function val(id) { const e = el(id); return e ? e.value : ''; }
+function setTxt(id, txt) { const e = el(id); if (e) e.textContent = txt; }
+function setHtml(id, html) { const e = el(id); if (e) e.innerHTML = html; }
+
+// ===== AUTH FORMS =====
 function setupAuthForms() {
-    document.getElementById('show-register')?.addEventListener('click', (e) => {
+    el('show-register')?.addEventListener('click', e => {
         e.preventDefault();
-        document.getElementById('login-form').classList.add('hidden');
-        document.getElementById('register-form').classList.remove('hidden');
+        el('login-form').classList.add('hidden');
+        el('register-form').classList.remove('hidden');
     });
-    document.getElementById('show-login')?.addEventListener('click', (e) => {
+    el('show-login')?.addEventListener('click', e => {
         e.preventDefault();
-        document.getElementById('register-form').classList.add('hidden');
-        document.getElementById('login-form').classList.remove('hidden');
+        el('register-form').classList.add('hidden');
+        el('login-form').classList.remove('hidden');
     });
-    document.getElementById('demo-link')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        currentUser = { id: 0, name: 'Demo User' };
-        showApp();
-    });
-
-    // Sign in
-    document.getElementById('signin-form')?.addEventListener('submit', async (e) => {
+    el('signin-form')?.addEventListener('submit', async e => {
         e.preventDefault();
         try {
-            const result = await apiPost('/api/auth/login', {
-                email: document.getElementById('login-email').value,
-                password: document.getElementById('login-password').value,
-            });
-            authToken = result.access_token;
-            currentUser = result.user;
-            localStorage.setItem('cashflow_token', authToken);
-            showApp();
-            showToast('Signed in!', 'success');
-        } catch (err) {
-            showToast(err.message, 'error');
-        }
+            const r = await apiPost('/api/auth/login', { email: val('login-email'), password: val('login-password') });
+            authToken = r.access_token; currentUser = r.user;
+            localStorage.setItem('cf_token', authToken);
+            showApp(); toast('Добро пожаловать!', 'success');
+        } catch (err) { toast(err.message, 'error'); }
     });
-
-    // Sign up
-    document.getElementById('signup-form')?.addEventListener('submit', async (e) => {
+    el('signup-form')?.addEventListener('submit', async e => {
         e.preventDefault();
         try {
-            const result = await apiPost('/api/auth/register', {
-                name: document.getElementById('reg-name').value,
-                username: document.getElementById('reg-username').value || null,
-                email: document.getElementById('reg-email').value,
-                password: document.getElementById('reg-password').value,
+            const r = await apiPost('/api/auth/register', {
+                name: val('reg-name'), username: val('reg-username') || null,
+                email: val('reg-email'), password: val('reg-password'),
             });
-            authToken = result.access_token;
-            currentUser = result.user;
-            localStorage.setItem('cashflow_token', authToken);
-            showApp();
-            showToast('Account created!', 'success');
-        } catch (err) {
-            showToast(err.message, 'error');
-        }
+            authToken = r.access_token; currentUser = r.user;
+            localStorage.setItem('cf_token', authToken);
+            showApp(); toast('Аккаунт создан!', 'success');
+        } catch (err) { toast(err.message, 'error'); }
     });
-
-    // Logout
-    document.getElementById('logout-btn')?.addEventListener('click', logoutAndRedirect);
+    el('logout-btn')?.addEventListener('click', doLogout);
 }
 
-// --- Tabs ---
+// ===== TABS =====
 function setupTabs() {
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.onclick = () => {
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             btn.classList.add('active');
-            const tabId = `tab-${btn.dataset.tab}`;
-            document.getElementById(tabId)?.classList.add('active');
+            const tab = el('tab-' + btn.dataset.tab);
+            if (tab) tab.classList.add('active');
 
             // Load data on tab switch
             if (btn.dataset.tab === 'groups') loadGroups();
             if (btn.dataset.tab === 'expenses') loadExpenses();
             if (btn.dataset.tab === 'balances') loadBalancesTab();
-            if (btn.dataset.tab === 'settle') loadSettlements();
-        });
+            if (btn.dataset.tab === 'settle') loadSettleTab();
+        };
     });
 }
 
-// --- Users ---
+// ===== LOAD USERS =====
 async function loadUsers() {
     try {
         users = await apiGet('/api/users');
         populateUserSelects();
-    } catch (e) {
-        console.error('Failed to load users:', e);
-        users = [];
-    }
+    } catch (e) { console.error('Users:', e); users = []; }
 }
 
 function populateUserSelects() {
-    const selects = ['qe-payer', 'balance-user', 'settle-payer', 'settle-creditor'];
-    selects.forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        const firstOpt = el.querySelector('option');
-        el.innerHTML = '';
-        if (firstOpt) el.appendChild(firstOpt.cloneNode(true));
+    const map = {
+        'qe-payer': 'Кто заплатл?',
+        'settle-payer': 'Кто платит?',
+        'settle-creditor': 'Кому?',
+    };
+    Object.entries(map).forEach(([id, placeholder]) => {
+        const sel = el(id);
+        if (!sel) return;
+        sel.innerHTML = `<option value="">${placeholder}</option>`;
         users.forEach(u => {
-            const opt = document.createElement('option');
-            opt.value = u.id;
-            opt.textContent = u.name;
-            el.appendChild(opt);
+            sel.innerHTML += `<option value="${u.id}">${esc(u.name)}</option>`;
         });
     });
-    updateQuickExpenseParticipants();
+
+    // Also populate group detail member select
+    const gdSel = el('gd-add-user-select');
+    if (gdSel) {
+        gdSel.innerHTML = '<option value="">Выберите пользователя</option>';
+        users.forEach(u => {
+            gdSel.innerHTML += `<option value="${u.id}">${esc(u.name)}</option>`;
+        });
+    }
 }
 
-// --- Groups ---
+// ===== LOAD GROUPS =====
 async function loadGroups() {
     try {
         groups = await apiGet('/api/groups');
         populateGroupSelects();
-        renderGroups();
-    } catch (e) {
-        console.error('Failed to load groups:', e);
-        const c = document.getElementById('groups-list');
-        if (c) c.innerHTML = `<p class="empty-state">Error loading groups: ${esc(e.message)}</p>`;
-    }
+        renderGroupsList();
+        renderDashGroups();
+    } catch (e) { console.error('Groups:', e); }
 }
 
 function populateGroupSelects() {
-    const selects = ['qe-group', 'exp-group-filter', 'balance-group', 'settle-group', 'optimize-group'];
-    selects.forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        const firstOpt = el.querySelector('option');
-        el.innerHTML = '';
-        if (firstOpt) el.appendChild(firstOpt.cloneNode(true));
+    const ids = ['qe-group', 'exp-group-filter', 'balance-group-filter', 'optimize-group'];
+    ids.forEach(id => {
+        const sel = el(id);
+        if (!sel) return;
+        const first = sel.querySelector('option');
+        sel.innerHTML = '';
+        if (first) sel.appendChild(first.cloneNode(true));
         (groups || []).filter(g => !g.is_archived).forEach(g => {
-            const opt = document.createElement('option');
-            opt.value = g.id;
-            opt.textContent = g.name;
-            el.appendChild(opt);
+            sel.innerHTML += `<option value="${g.id}">${esc(g.name)}</option>`;
         });
     });
 }
 
-function renderGroups() {
-    const container = document.getElementById('groups-list');
-    if (!container) return;
-    if (!groups.length) {
-        container.innerHTML = '<p class="empty-state">No groups yet. Create your first group!</p>';
+function renderGroupsList() {
+    const c = el('groups-list');
+    if (!c) return;
+    if (!groups || !groups.length) {
+        c.innerHTML = '<p class="empty-state">У вас пока нет групп. Создайте первую!</p>';
         return;
     }
-    container.innerHTML = groups.map(g => `
-        <div class="group-item" data-group-id="${g.id}">
+    c.innerHTML = groups.map(g => `
+        <div class="group-item" onclick="openGroupDetail(${g.id})">
             <div class="group-info">
                 <div class="group-name">${esc(g.name)}</div>
                 <div class="group-desc-text">${esc(g.description || '')}</div>
-                <div class="group-meta">${g.member_count} member${g.member_count !== 1 ? 's' : ''}</div>
+                <div class="group-meta">${g.member_count} участник${pluralRu(g.member_count)}</div>
             </div>
-            ${g.is_archived ? '<span class="badge badge-archived">Archived</span>' : ''}
+            ${g.is_archived ? '<span class="badge badge-archived">Архив</span>' : ''}
         </div>
     `).join('');
-
-    container.querySelectorAll('.group-item').forEach(el => {
-        el.addEventListener('click', () => openGroupDetail(parseInt(el.dataset.groupId)));
-    });
 }
 
+function renderDashGroups() {
+    const c = el('dash-groups-list');
+    if (!c) return;
+    const active = (groups || []).filter(g => !g.is_archived);
+    if (!active.length) {
+        c.innerHTML = '<p class="empty-state">Создайте группу на вкладке «Группы»</p>';
+        return;
+    }
+    c.innerHTML = active.map(g => `
+        <div class="group-item" onclick="openGroupDetail(${g.id})">
+            <div class="group-info">
+                <div class="group-name">${esc(g.name)}</div>
+                <div class="group-meta">${g.member_count} участник${pluralRu(g.member_count)}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ===== GROUP DETAIL =====
 async function openGroupDetail(groupId) {
+    currentGroupId = groupId;
     try {
         const group = await apiGet(`/api/groups/${groupId}`);
-        document.getElementById('groups-list').classList.add('hidden');
-        const h2 = document.getElementById('create-group-form')?.parentElement?.querySelector('h2');
-        if (h2) h2.classList.add('hidden');
-        document.getElementById('create-group-form')?.classList.add('hidden');
 
-        document.getElementById('group-detail').classList.remove('hidden');
-        document.getElementById('gd-name').textContent = group.name;
-        document.getElementById('gd-desc').textContent = group.description || 'No description';
-        document.getElementById('gd-members').textContent = `${group.members.length} members`;
+        el('groups-list-view').classList.add('hidden');
+        el('group-detail').classList.remove('hidden');
 
-        const badge = document.getElementById('gd-archived');
-        badge?.classList.toggle('hidden', !group.is_archived);
+        setTxt('gd-name', group.name);
+        setTxt('gd-desc', group.description || 'Без описания');
+        setTxt('gd-members-count', `${group.members.length} участник${pluralRu(group.members.length)}`);
+        el('gd-archived').classList.toggle('hidden', !group.is_archived);
 
         // Members
-        const membersList = document.getElementById('gd-members-list');
-        if (membersList) {
-            membersList.innerHTML = (group.members || []).map(m => `
+        const ml = el('gd-members-list');
+        if (ml) {
+            ml.innerHTML = (group.members || []).map(m => `
                 <div class="member-item">
                     <span>${esc(m.name)}</span>
-                    <span class="badge">${m.id === group.created_by ? 'Creator' : 'Member'}</span>
+                    <span class="badge ${m.id === group.created_by ? 'badge-creator' : 'badge-member'}">
+                        ${m.id === group.created_by ? 'Создатель' : 'Участник'}
+                    </span>
                 </div>
             `).join('');
         }
 
-        // Group balances
+        // Balances
         try {
             const balances = await apiGet(`/api/balances/group/${groupId}`);
-            const balDiv = document.getElementById('gd-balances');
-            if (balDiv) {
-                balDiv.innerHTML = !balances.length
-                    ? '<p class="empty-state">✅ All clear! No debts.</p>'
-                    : balances.map(b => `
-                        <div class="balance-item">
-                            <div class="balance-name">${esc(b.debtor_name)} owes ${esc(b.creditor_name)}</div>
-                            <div class="balance-amount owes">${b.amount.toFixed(2)} ₽</div>
-                        </div>
-                    `).join('');
-            }
-        } catch (e) {
-            const balDiv = document.getElementById('gd-balances');
-            if (balDiv) balDiv.innerHTML = `<p class="empty-state">Error: ${esc(e.message)}</p>`;
-        }
+            setHtml('gd-balances', !balances.length
+                ? '<p class="empty-state">✅ Все долги погашены</p>'
+                : balances.map(b => `
+                    <div class="balance-item">
+                        <span class="balance-name">${esc(b.debtor_name)} должен ${esc(b.creditor_name)}</span>
+                        <span class="balance-amount owes">${b.amount.toFixed(2)} ₽</span>
+                    </div>`).join('')
+            );
+        } catch { setHtml('gd-balances', '<p class="empty-state">Ошибка загрузки балансов</p>'); }
 
-        // Group expenses
+        // Expenses
         try {
             const expenses = await apiGet(`/api/expenses?group_id=${groupId}&limit=50`);
-            renderExpensesInContainer(expenses, 'gd-expenses');
-        } catch (e) {
-            const expDiv = document.getElementById('gd-expenses');
-            if (expDiv) expDiv.innerHTML = `<p class="empty-state">Error: ${esc(e.message)}</p>`;
+            renderExpensesIn(expenses, 'gd-expenses');
+        } catch { setHtml('gd-expenses', '<p class="empty-state">Ошибка загрузки трат</p>'); }
+
+        // Populate member dropdown (exclude already members)
+        const memberIds = new Set((group.members || []).map(m => m.id));
+        const sel = el('gd-add-user-select');
+        if (sel) {
+            sel.innerHTML = '<option value="">Выберите пользователя</option>';
+            users.filter(u => !memberIds.has(u.id)).forEach(u => {
+                sel.innerHTML += `<option value="${u.id}">${esc(u.name)}</option>`;
+            });
         }
-    } catch (err) {
-        showToast('Failed to load group: ' + err.message, 'error');
-    }
+
+    } catch (err) { toast('Ошибка: ' + err.message, 'error'); }
 }
 
-document.getElementById('group-back-btn')?.addEventListener('click', () => {
-    document.getElementById('group-detail').classList.add('hidden');
-    document.getElementById('groups-list').classList.remove('hidden');
-    const h2 = document.getElementById('create-group-form')?.parentElement?.querySelector('h2');
-    if (h2) h2.classList.remove('hidden');
-    document.getElementById('create-group-form')?.classList.remove('hidden');
+el('group-back-btn')?.addEventListener('click', () => {
+    el('group-detail').classList.add('hidden');
+    el('groups-list-view').classList.remove('hidden');
+    currentGroupId = null;
 });
 
+// Add member to group
+el('gd-add-user-btn')?.addEventListener('click', async () => {
+    const userId = parseInt(val('gd-add-user-select'));
+    if (!userId) { toast('Выберите пользователя', 'error'); return; }
+    try {
+        await apiPost(`/api/groups/${currentGroupId}/members`, { user_id: userId });
+        toast('Участник добавлен!', 'success');
+        openGroupDetail(currentGroupId); // refresh
+    } catch (err) { toast(err.message, 'error'); }
+});
+
+// ===== GROUP FORM =====
 function setupGroupForm() {
-    document.getElementById('create-group-form')?.addEventListener('submit', async (e) => {
+    el('create-group-form')?.addEventListener('submit', async e => {
         e.preventDefault();
-        const name = document.getElementById('cg-name').value.trim();
-        const description = document.getElementById('cg-desc').value.trim();
-        if (!name) { showToast('Enter a group name', 'error'); return; }
+        const name = val('cg-name').trim();
+        if (!name) { toast('Введите название', 'error'); return; }
         try {
-            await apiPost('/api/groups', { name, description });
-            document.getElementById('cg-name').value = '';
-            document.getElementById('cg-desc').value = '';
-            await loadGroups();
-            await loadStats();
-            showToast('Group created!', 'success');
+            await apiPost('/api/groups', { name, description: val('cg-desc').trim() || null });
+            el('cg-name').value = ''; el('cg-desc').value = '';
+            await loadGroups(); await loadStats();
+            toast('Группа создана!', 'success');
+        } catch (err) { toast(err.message, 'error'); }
+    });
+}
+
+// ===== DASHBOARD =====
+async function loadDashboard() {
+    if (!currentUser) return;
+
+    // My balance summary
+    try {
+        const total = await apiGet(`/api/balances/total/${currentUser.id}`);
+        const c = el('my-balance');
+        if (c) {
+            c.innerHTML = `
+                <div class="bal-row"><span class="bal-label">Мне должны:</span><span class="bal-val green">${total.total_owed.toFixed(2)} ₽</span></div>
+                <div class="bal-row"><span class="bal-label">Я должен:</span><span class="bal-val red">${total.total_owes.toFixed(2)} ₽</span></div>
+                <div class="bal-row"><span class="bal-label">Итого:</span><span class="bal-val ${total.net >= 0 ? 'green' : 'red'}">${total.net.toFixed(2)} ₽</span></div>
+            `;
+        }
+    } catch { setHtml('my-balance', '<p class="empty-state">Не удалось загрузить</p>'); }
+
+    // Stats
+    try {
+        const s = await apiGet('/api/stats');
+        setTxt('stat-groups', s.groups);
+        setTxt('stat-expenses', s.expenses);
+        setTxt('stat-total', s.total_expenses.toFixed(2) + ' ₽');
+        setTxt('stat-settled', s.total_settled.toFixed(2) + ' ₽');
+    } catch {}
+}
+
+// ===== EXPENSE FORM =====
+function setupExpenseForm() {
+    // When group changes → update participants
+    el('qe-group')?.addEventListener('change', updateParticipantsFromGroup);
+
+    // When payer changes → update participants (remove payer)
+    el('qe-payer')?.addEventListener('change', updateParticipantsFromGroup);
+
+    // Default payer to current user
+    if (currentUser) {
+        setTimeout(() => { el('qe-payer').value = currentUser.id; updateParticipantsFromGroup(); }, 200);
+    }
+
+    el('quick-expense-form')?.addEventListener('submit', async e => {
+        e.preventDefault();
+        const resultDiv = el('qe-result');
+        if (resultDiv) resultDiv.classList.add('hidden');
+
+        const payerId = parseInt(val('qe-payer'));
+        const amount = parseFloat(val('qe-amount'));
+        if (!payerId) { toast('Выберите кто заплатил', 'error'); return; }
+        if (!amount || amount <= 0) { toast('Введите сумму', 'error'); return; }
+
+        const participantIds = [];
+        document.querySelectorAll('#qe-participants input:checked').forEach(cb => participantIds.push(parseInt(cb.value)));
+        if (!participantIds.length) { toast('Выберите хотя бы одного участника', 'error'); return; }
+
+        const data = {
+            payer_id: payerId, amount,
+            participant_ids: participantIds,
+            description: val('qe-desc') || null,
+            category: val('qe-category') || 'other',
+            currency: val('qe-currency') || 'RUB',
+            split_type: val('qe-split-type') || 'equal',
+        };
+        const gId = val('qe-group');
+        if (gId) data.group_id = parseInt(gId);
+
+        try {
+            const r = await apiPost('/api/expenses', data);
+            if (resultDiv) {
+                resultDiv.textContent = `✅ ${r.payer_name} заплатил ${r.amount.toFixed(2)} ${r.currency} — разделено на ${r.splits.length} чел.`;
+                resultDiv.className = 'result success'; resultDiv.classList.remove('hidden');
+            }
+            el('qe-amount').value = ''; el('qe-desc').value = '';
+            await Promise.allSettled([loadStats(), loadDashboard()]);
+            toast('Трата добавлена!', 'success');
         } catch (err) {
-            showToast(err.message, 'error');
+            if (resultDiv) {
+                resultDiv.textContent = '❌ ' + err.message;
+                resultDiv.className = 'result error'; resultDiv.classList.remove('hidden');
+            }
+            toast(err.message, 'error');
         }
     });
 }
 
-// --- Stats ---
-async function loadStats() {
-    try {
-        const stats = await apiGet('/api/stats');
-        setEl('stat-users', stats.users);
-        setEl('stat-groups', stats.groups);
-        setEl('stat-expenses', stats.expenses);
-        setEl('stat-total', `${stats.total_expenses.toFixed(2)} ₽`);
-        setEl('stat-settled', `${stats.total_settled.toFixed(2)} ₽`);
-    } catch (e) {
-        console.error('Failed to load stats:', e);
+function updateParticipantsFromGroup() {
+    const groupId = val('qe-group') ? parseInt(val('qe-group')) : null;
+    const payerId = parseInt(val('qe-payer') || 0);
+    const container = el('qe-participants');
+    if (!container) return;
+
+    let participantList;
+
+    if (groupId) {
+        // Use group members (excluding payer)
+        const group = groups.find(g => g.id === groupId);
+        if (group && group.members) {
+            participantList = group.members.filter(m => m.id !== payerId);
+        } else {
+            participantList = users.filter(u => u.id !== payerId);
+        }
+    } else {
+        // All users except payer
+        participantList = users.filter(u => u.id !== payerId);
     }
+
+    container.innerHTML = '<p class="hint">Разделить с:</p>' + participantList.map(u => `
+        <label class="participant-checkbox">
+            <input type="checkbox" value="${u.id}" checked> ${esc(u.name)}
+        </label>
+    `).join('');
 }
 
-function setEl(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
-
-// --- Expenses ---
+// ===== EXPENSES TAB =====
 async function loadExpenses(filters = {}) {
     try {
-        const params = new URLSearchParams({ limit: 100 });
+        const params = new URLSearchParams({ limit: 200 });
         if (filters.group_id) params.set('group_id', filters.group_id);
         if (filters.category) params.set('category', filters.category);
         if (filters.date_from) params.set('date_from', filters.date_from);
         if (filters.date_to) params.set('date_to', filters.date_to);
-
-        const expenses = await apiGet(`/api/expenses?${params}`);
-        renderExpenses(expenses);
-    } catch (e) {
-        console.error('Failed to load expenses:', e);
-        const c = document.getElementById('expenses-list');
-        if (c) c.innerHTML = `<p class="empty-state">Error loading expenses: ${esc(e.message)}</p>`;
-    }
+        const expenses = await apiGet('/api/expenses?' + params);
+        renderExpensesIn(expenses, 'expenses-list');
+    } catch (e) { setHtml('expenses-list', `<p class="empty-state">Ошибка: ${esc(e.message)}</p>`); }
 }
 
-function renderExpenses(expenses) {
-    renderExpensesInContainer(expenses, 'expenses-list');
-}
-
-function renderExpensesInContainer(expenses, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
+function renderExpensesIn(expenses, containerId) {
+    const c = el(containerId);
+    if (!c) return;
     if (!expenses || !expenses.length) {
-        container.innerHTML = '<p class="empty-state">No expenses yet.</p>';
+        c.innerHTML = '<p class="empty-state">Трат пока нет</p>';
         return;
     }
-
-    const catEmoji = { food:'🍔', transport:'🚗', housing:'🏠', entertainment:'🎬', utilities:'💡', groceries:'🛒', other:'📦' };
-
-    container.innerHTML = expenses.map(e => `
+    const emoji = { food:'🍔', transport:'🚗', housing:'🏠', entertainment:'🎬', utilities:'💡', groceries:'🛒', other:'📦' };
+    c.innerHTML = expenses.map(e => `
         <div class="expense-item">
             <div class="expense-info">
-                <div class="expense-desc">${esc(e.description || 'No description')}</div>
+                <div class="expense-desc">${esc(e.description || 'Без описания')}</div>
                 <div class="expense-meta">
-                    Paid by <strong>${esc(e.payer_name)}</strong>
-                    · ${formatDate(e.expense_date || e.created_at)}
-                    · Split with ${(e.splits || []).length} people
-                    <span class="expense-category">${catEmoji[e.category] || '📦'} ${e.category}</span>
+                    Заплатил(а) <strong>${esc(e.payer_name)}</strong>
+                    · ${fmtDate(e.expense_date || e.created_at)}
+                    · ${e.splits?.length || '?'} чел.
+                    <span class="expense-category">${emoji[e.category] || '📦'} ${e.category}</span>
                 </div>
             </div>
             <div class="expense-amount">${e.amount.toFixed(2)} ${e.currency || '₽'}</div>
@@ -438,267 +494,256 @@ function renderExpensesInContainer(expenses, containerId) {
     `).join('');
 }
 
-// --- Quick Expense ---
-function updateQuickExpenseParticipants() {
-    const container = document.getElementById('qe-participants');
-    const payerId = parseInt(document.getElementById('qe-payer')?.value || 0);
-    if (!container) return;
-
-    let html = '<p class="hint">Split with:</p>';
-    users.forEach(u => {
-        if (u.id === payerId) return;
-        html += `<label class="participant-checkbox">
-            <input type="checkbox" value="${u.id}" checked> ${esc(u.name)}
-        </label>`;
+function setupFilters() {
+    el('exp-apply-filters')?.addEventListener('click', () => {
+        loadExpenses({
+            group_id: val('exp-group-filter') || null,
+            category: val('exp-category-filter') || null,
+            date_from: val('exp-date-from') || null,
+            date_to: val('exp-date-to') || null,
+        });
     });
-    container.innerHTML = html;
+    el('exp-clear-filters')?.addEventListener('click', () => {
+        el('exp-group-filter').value = '';
+        el('exp-category-filter').value = '';
+        el('exp-date-from').value = '';
+        el('exp-date-to').value = '';
+        loadExpenses();
+    });
 }
 
-document.getElementById('qe-payer')?.addEventListener('change', updateQuickExpenseParticipants);
-
-// --- Balances Tab ---
+// ===== BALANCES TAB =====
 async function loadBalancesTab() {
-    const container = document.getElementById('balances-list');
-    if (container) container.innerHTML = '<p class="empty-state">Select a user above</p>';
-    const tb = document.getElementById('total-balance');
-    if (tb) tb.innerHTML = '<p class="empty-state">Select a user to see total balance</p>';
+    if (!currentUser) return;
+    loadMyBalances();
 }
 
-document.getElementById('balance-user')?.addEventListener('change', async (e) => {
-    const userId = parseInt(e.target.value);
-    if (!userId) {
-        loadBalancesTab();
-        return;
-    }
-
-    const container = document.getElementById('balances-list');
-    if (container) container.innerHTML = '<p class="empty-state">Loading...</p>';
+async function loadMyBalances() {
+    if (!currentUser) return;
+    setHtml('my-balances-list', '<p class="empty-state">Загрузка...</p>');
 
     try {
-        const groupId = document.getElementById('balance-group')?.value || null;
-        const url = groupId ? `/api/balances/${userId}?group_id=${groupId}` : `/api/balances/${userId}`;
+        const groupId = val('balance-group-filter') || null;
+        const url = groupId ? `/api/balances/${currentUser.id}?group_id=${groupId}` : `/api/balances/${currentUser.id}`;
         const balances = await apiGet(url);
 
-        if (container) {
-            container.innerHTML = !balances.length
-                ? '<p class="empty-state">✅ All clear! No debts.</p>'
-                : balances.map(b => {
-                    const isOwed = b.amount > 0;
-                    const cls = isOwed ? 'owed' : 'owes';
-                    const label = isOwed ? 'is owed to you' : 'you owe';
-                    return `<div class="balance-item">
-                        <div class="balance-name">${esc(b.user_name)} <span class="balance-label">${label}</span></div>
-                        <div class="balance-amount ${cls}">${Math.abs(b.amount).toFixed(2)} ₽</div>
-                    </div>`;
-                }).join('');
+        if (!balances.length) {
+            setHtml('my-balances-list', '<p class="empty-state">✅ У вас нет долгов</p>');
+        } else {
+            setHtml('my-balances-list', balances.map(b => {
+                const owed = b.amount > 0;
+                return `<div class="balance-item">
+                    <span class="balance-name">${esc(b.user_name)}
+                        <span class="balance-label">${owed ? 'должен(а) вам' : 'вы должны'}</span>
+                    </span>
+                    <span class="balance-amount ${owed ? 'owed' : 'owes'}">${Math.abs(b.amount).toFixed(2)} ₽</span>
+                </div>`;
+            }).join(''));
         }
 
-        // Total balance
-        const total = await apiGet(`/api/balances/total/${userId}`);
-        const tb = document.getElementById('total-balance');
-        if (tb) {
-            tb.innerHTML = `
-                <div class="stat-row"><span>People owe you:</span><span class="owed">${total.total_owed.toFixed(2)} ₽</span></div>
-                <div class="stat-row"><span>You owe:</span><span class="owes">${total.total_owes.toFixed(2)} ₽</span></div>
-                <div class="stat-row"><span>Net:</span><span class="${total.net >= 0 ? 'owed' : 'owes'}">${total.net.toFixed(2)} ₽</span></div>
-            `;
-        }
-    } catch (err) {
-        const container = document.getElementById('balances-list');
-        if (container) container.innerHTML = `<p class="empty-state">Error: ${esc(err.message)}</p>`;
-    }
-});
-
-document.getElementById('balance-group')?.addEventListener('change', () => {
-    const userId = parseInt(document.getElementById('balance-user')?.value || 0);
-    if (userId) document.getElementById('balance-user')?.dispatchEvent(new Event('change'));
-});
-
-// --- Forms (Settle, Expense) ---
-function setupForms() {
-    // Quick expense form
-    document.getElementById('quick-expense-form')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const resultDiv = document.getElementById('qe-result');
-        if (resultDiv) resultDiv.classList.add('hidden');
-
-        const payerId = parseInt(document.getElementById('qe-payer')?.value || 0);
-        const amount = parseFloat(document.getElementById('qe-amount')?.value || 0);
-        const description = document.getElementById('qe-desc')?.value?.trim();
-        const category = document.getElementById('qe-category')?.value || 'other';
-        const currency = document.getElementById('qe-currency')?.value || 'RUB';
-        const splitType = document.getElementById('qe-split-type')?.value || 'equal';
-        const groupId = document.getElementById('qe-group')?.value || null;
-
-        const participantIds = [];
-        document.querySelectorAll('#qe-participants input[type="checkbox"]:checked').forEach(cb => {
-            participantIds.push(parseInt(cb.value));
-        });
-
-        if (!payerId) { showToast('Select who paid', 'error'); return; }
-        if (!amount || amount <= 0) { showToast('Enter a valid amount', 'error'); return; }
-        if (!participantIds.length) { showToast('Select at least one participant', 'error'); return; }
-
-        const data = {
-            payer_id: payerId, amount, participant_ids: participantIds,
-            description: description || null, category, currency, split_type: splitType,
-        };
-        if (groupId) data.group_id = parseInt(groupId);
-
-        try {
-            const result = await apiPost('/api/expenses', data);
-            if (resultDiv) {
-                resultDiv.textContent = `✅ Added! ${result.payer_name} paid ${result.amount.toFixed(2)} ${result.currency} split ${(result.splits || []).length} ways.`;
-                resultDiv.className = 'result success';
-                resultDiv.classList.remove('hidden');
-            }
-            document.getElementById('qe-amount').value = '';
-            document.getElementById('qe-desc').value = '';
-            await Promise.allSettled([loadExpenses(), loadStats()]);
-            showToast('Expense added!', 'success');
-        } catch (err) {
-            if (resultDiv) {
-                resultDiv.textContent = `❌ ${err.message}`;
-                resultDiv.className = 'result error';
-                resultDiv.classList.remove('hidden');
-            }
-            showToast(err.message, 'error');
-        }
-    });
-
-    // Settle form
-    document.getElementById('settle-form')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const resultDiv = document.getElementById('settle-result');
-        if (resultDiv) resultDiv.classList.add('hidden');
-
-        const payerId = parseInt(document.getElementById('settle-payer')?.value || 0);
-        const creditorId = parseInt(document.getElementById('settle-creditor')?.value || 0);
-        const amountVal = document.getElementById('settle-amount')?.value;
-        const amount = amountVal ? parseFloat(amountVal) : null;
-        const groupId = document.getElementById('settle-group')?.value || null;
-
-        if (!payerId) { showToast('Select who is paying', 'error'); return; }
-        if (!creditorId) { showToast('Select who is receiving', 'error'); return; }
-        if (payerId === creditorId) { showToast('Can\'t pay yourself', 'error'); return; }
-
-        const data = { payer_id: payerId, creditor_id: creditorId, amount };
-        if (groupId) data.group_id = parseInt(groupId);
-
-        try {
-            const result = await apiPost('/api/settle', data);
-            if (resultDiv) {
-                resultDiv.textContent = result.success ? `✅ ${result.message}` : `❌ ${result.message}`;
-                resultDiv.className = `result ${result.success ? 'success' : 'error'}`;
-                resultDiv.classList.remove('hidden');
-            }
-            if (result.success) {
-                document.getElementById('settle-amount').value = '';
-                await Promise.allSettled([loadStats(), loadSettlements()]);
-                showToast('Settlement recorded!', 'success');
-            } else {
-                showToast(result.message, 'error');
-            }
-        } catch (err) {
-            if (resultDiv) {
-                resultDiv.textContent = `❌ ${err.message}`;
-                resultDiv.className = 'result error';
-                resultDiv.classList.remove('hidden');
-            }
-            showToast(err.message, 'error');
-        }
-    });
-
-    // Expense filters
-    document.getElementById('exp-apply-filters')?.addEventListener('click', () => {
-        loadExpenses({
-            group_id: document.getElementById('exp-group-filter')?.value || null,
-            category: document.getElementById('exp-category-filter')?.value || null,
-            date_from: document.getElementById('exp-date-from')?.value || null,
-            date_to: document.getElementById('exp-date-to')?.value || null,
-        });
-    });
+        // Total
+        const total = await apiGet(`/api/balances/total/${currentUser.id}`);
+        setHtml('my-total-balance', `
+            <div class="stat-row"><span>Вам должны:</span><span class="bal-val green">${total.total_owed.toFixed(2)} ₽</span></div>
+            <div class="stat-row"><span>Вы должны:</span><span class="bal-val red">${total.total_owes.toFixed(2)} ₽</span></div>
+            <div class="stat-row"><span>Нетто:</span><span class="bal-val ${total.net >= 0 ? 'green' : 'red'}">${total.net.toFixed(2)} ₽</span></div>
+        `);
+    } catch (e) { setHtml('my-balances-list', `<p class="empty-state">Ошибка: ${esc(e.message)}</p>`); }
 }
 
-// --- Settlements ---
-async function loadSettlements() {
+el('balance-group-filter')?.addEventListener('change', loadMyBalances);
+
+// ===== SETTLE TAB =====
+async function loadSettleTab() {
+    if (!currentUser) return;
+    await Promise.allSettled([loadIOwe(), loadOwesMe(), loadSettlementHistory()]);
+}
+
+async function loadIOwe() {
     try {
-        const settlements = await apiGet('/api/settlements?limit=50');
-        const container = document.getElementById('settlements-list');
-        if (!container) return;
-        if (!settlements.length) {
-            container.innerHTML = '<p class="empty-state">No settlements yet</p>';
+        const balances = await apiGet(`/api/balances/${currentUser.id}`);
+        const iOwe = balances.filter(b => b.amount < 0); // negative = I owe them
+        const c = el('i-owe-list');
+        if (!c) return;
+        if (!iOwe.length) {
+            c.innerHTML = '<p class="empty-state">✅ Вы никому не должны</p>';
             return;
         }
-        container.innerHTML = settlements.map(s => {
+        c.innerHTML = iOwe.map(b => `
+            <div class="settle-quick-item">
+                <div>
+                    <div class="balance-name">${esc(b.user_name)}</div>
+                    <div class="balance-label">Вы должны</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <span class="settle-amount owes">${Math.abs(b.amount).toFixed(2)} ₽</span>
+                    <button class="btn btn-success" style="width:auto;padding:6px 12px;font-size:0.8rem;" onclick="quickSettle(${currentUser.id}, ${b.user_id})">Погасить</button>
+                </div>
+            </div>
+        `).join('');
+    } catch { setHtml('i-owe-list', '<p class="empty-state">Ошибка загрузки</p>'); }
+}
+
+async function loadOwesMe() {
+    try {
+        const balances = await apiGet(`/api/balances/${currentUser.id}`);
+        const owesMe = balances.filter(b => b.amount > 0); // positive = they owe me
+        const c = el('owe-me-list');
+        if (!c) return;
+        if (!owesMe.length) {
+            c.innerHTML = '<p class="empty-state">Вам никто не должен</p>';
+            return;
+        }
+        c.innerHTML = owesMe.map(b => `
+            <div class="settle-quick-item">
+                <div>
+                    <div class="balance-name">${esc(b.user_name)}</div>
+                    <div class="balance-label">Должен(а) вам</div>
+                </div>
+                <span class="settle-amount owed">${b.amount.toFixed(2)} ₽</span>
+            </div>
+        `).join('');
+    } catch { setHtml('owe-me-list', '<p class="empty-state">Ошибка загрузки</p>'); }
+}
+
+async function loadSettlementHistory() {
+    try {
+        const settlements = await apiGet('/api/settlements?limit=50');
+        const c = el('settlements-list');
+        if (!c) return;
+        if (!settlements.length) {
+            c.innerHTML = '<p class="empty-state">Погашений пока нет</p>';
+            return;
+        }
+        c.innerHTML = settlements.map(s => {
             const payer = users.find(u => u.id === s.payer_id);
             const creditor = users.find(u => u.id === s.creditor_id);
             return `<div class="balance-item">
-                <div class="balance-name">${esc(payer?.name || 'Unknown')} → ${esc(creditor?.name || 'Unknown')}</div>
-                <div class="balance-amount owed">${s.amount.toFixed(2)} ${s.currency || '₽'}</div>
+                <span class="balance-name">${esc(payer?.name || '?')} → ${esc(creditor?.name || '?')}</span>
+                <span class="balance-amount owed">${s.amount.toFixed(2)} ${s.currency || '₽'}</span>
             </div>`;
         }).join('');
-    } catch (e) {
-        console.error('Failed to load settlements:', e);
-        const container = document.getElementById('settlements-list');
-        if (container) container.innerHTML = `<p class="empty-state">Error loading settlements</p>`;
-    }
+    } catch { setHtml('settlements-list', '<p class="empty-state">Ошибка загрузки</p>'); }
 }
 
-// --- Optimize ---
-function setupOptimizeButton() {
-    document.getElementById('optimize-btn')?.addEventListener('click', async () => {
-        const resultDiv = document.getElementById('optimize-result');
-        if (!resultDiv) return;
-        resultDiv.innerHTML = '<p class="empty-state">Calculating...</p>';
+// Quick settle: payer pays creditor full amount
+async function quickSettle(payerId, creditorId) {
+    try {
+        const r = await apiPost('/api/settle', { payer_id: payerId, creditor_id: creditorId });
+        toast(r.message, r.success ? 'success' : 'error');
+        await loadSettleTab();
+    } catch (err) { toast(err.message, 'error'); }
+}
+
+// Make quickSettle global
+window.quickSettle = quickSettle;
+
+// Settle form
+function setupSettleForm() {
+    el('settle-form')?.addEventListener('submit', async e => {
+        e.preventDefault();
+        const resultDiv = el('settle-result');
+        if (resultDiv) resultDiv.classList.add('hidden');
+
+        const payerId = parseInt(val('settle-payer'));
+        const creditorId = parseInt(val('settle-creditor'));
+        if (!payerId) { toast('Выберите кто платит', 'error'); return; }
+        if (!creditorId) { toast('Выберите кому', 'error'); return; }
+        if (payerId === creditorId) { toast('Нельзя платить самому себе', 'error'); return; }
+
+        const amt = val('settle-amount');
+        const data = { payer_id: payerId, creditor_id: creditorId, amount: amt ? parseFloat(amt) : null };
 
         try {
-            const groupId = document.getElementById('optimize-group')?.value || null;
-            const url = groupId ? `/api/optimize-settlements?group_id=${groupId}` : '/api/optimize-settlements';
-            const plan = await apiGet(url);
-
-            if (!plan.length) {
-                resultDiv.innerHTML = '<p class="empty-state">✅ No debts to settle!</p>';
-                return;
+            const r = await apiPost('/api/settle', data);
+            if (resultDiv) {
+                resultDiv.textContent = r.success ? '✅ ' + r.message : '❌ ' + r.message;
+                resultDiv.className = `result ${r.success ? 'success' : 'error'}`;
+                resultDiv.classList.remove('hidden');
             }
-
-            resultDiv.innerHTML = plan.map(p => `
-                <div class="optimize-item">
-                    <div>
-                        <span class="optimize-arrow">${esc(p.from_user_name)}</span>
-                        <span class="optimize-arrow">→</span>
-                        <span class="optimize-arrow">${esc(p.to_user_name)}</span>
-                    </div>
-                    <div class="expense-amount">${p.amount.toFixed(2)} ₽</div>
-                </div>
-            `).join('');
+            if (r.success) {
+                el('settle-amount').value = '';
+                await loadSettleTab();
+                toast('Погашено!', 'success');
+            }
         } catch (err) {
-            resultDiv.innerHTML = `<p class="empty-state">Error: ${esc(err.message)}</p>`;
+            if (resultDiv) {
+                resultDiv.textContent = '❌ ' + err.message;
+                resultDiv.className = 'result error'; resultDiv.classList.remove('hidden');
+            }
+            toast(err.message, 'error');
         }
     });
 }
 
-// --- Utils ---
-function esc(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+// ===== OPTIMIZE =====
+function setupOptimizeBtn() {
+    el('optimize-btn')?.addEventListener('click', async () => {
+        const c = el('optimize-result');
+        if (!c) return;
+        c.innerHTML = '<p class="empty-state">Считаю...</p>';
+        try {
+            const gId = val('optimize-group');
+            const url = gId ? `/api/optimize-settlements?group_id=${gId}` : '/api/optimize-settlements';
+            const plan = await apiGet(url);
+            if (!plan.length) {
+                c.innerHTML = '<p class="empty-state">✅ Все долги погашены!</p>';
+                return;
+            }
+            c.innerHTML = plan.map((p, i) => `
+                <div class="optimize-item">
+                    <span class="optimize-arrow">${i + 1}. ${esc(p.from_user_name)} → ${esc(p.to_user_name)}</span>
+                    <span class="expense-amount">${p.amount.toFixed(2)} ₽</span>
+                </div>
+            `).join('');
+        } catch (err) { c.innerHTML = `<p class="empty-state">Ошибка: ${esc(err.message)}</p>`; }
+    });
 }
 
-function formatDate(str) {
-    if (!str) return '';
+// ===== STATS (called from dashboard) =====
+async function loadStats() {
     try {
-        const d = new Date(str);
-        return d.toLocaleDateString('en-GB', { day:'2-digit', month:'2-digit', year:'numeric' })
-            + ' ' + d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
-    } catch { return str; }
+        const s = await apiGet('/api/stats');
+        setTxt('stat-groups', s.groups);
+        setTxt('stat-expenses', s.expenses);
+        setTxt('stat-total', s.total_expenses.toFixed(2) + ' ₽');
+        setTxt('stat-settled', s.total_settled.toFixed(2) + ' ₽');
+    } catch {}
 }
 
-function showToast(message, type = 'success') {
-    const toast = document.getElementById('toast');
-    if (!toast) return;
-    toast.textContent = message;
-    toast.className = `toast show ${type}`;
-    setTimeout(() => { toast.className = 'toast hidden'; }, 3000);
+// ===== UTILS =====
+function esc(s) {
+    if (!s) return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
 }
+
+function fmtDate(s) {
+    if (!s) return '';
+    try {
+        const d = new Date(s);
+        return d.toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric' })
+            + ' ' + d.toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+    } catch { return s; }
+}
+
+function pluralRu(n) {
+    n = Math.abs(n) % 100;
+    const r = n % 10;
+    if (n > 10 && n < 20) return 'ов';
+    if (r === 1) return '';
+    if (r >= 2 && r <= 4) return 'а';
+    return 'ов';
+}
+
+function toast(msg, type = 'success') {
+    const t = el('toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.className = `toast show ${type}`;
+    setTimeout(() => { t.className = 'toast hidden'; }, 3000);
+}
+
+// Make openGroupDetail global
+window.openGroupDetail = openGroupDetail;

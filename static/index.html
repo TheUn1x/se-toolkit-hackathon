@@ -1,128 +1,151 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CashFlow — Shared Expense Tracker</title>
+    <title>CashFlow — Учёт совместных трат</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <!-- Auth Screens -->
+    <!-- ===== AUTH SCREEN ===== -->
     <div id="auth-screen" class="auth-container">
         <div class="auth-card">
             <h1>💰 CashFlow</h1>
-            <p class="auth-subtitle">Shared Expense Tracker</p>
+            <p class="auth-subtitle">Учёт совместных трат</p>
 
             <div id="login-form" class="auth-form">
-                <h2>Sign In</h2>
+                <h2>Вход</h2>
                 <form id="signin-form">
                     <input type="email" id="login-email" placeholder="Email" required>
-                    <input type="password" id="login-password" placeholder="Password" required>
-                    <button type="submit" class="btn btn-primary">Sign In</button>
+                    <input type="password" id="login-password" placeholder="Пароль" required>
+                    <button type="submit" class="btn btn-primary">Войти</button>
                 </form>
-                <p class="auth-link">Don't have an account? <a href="#" id="show-register">Sign Up</a></p>
+                <p class="auth-link">Нет аккаунта? <a href="#" id="show-register">Зарегистрироваться</a></p>
             </div>
 
             <div id="register-form" class="auth-form hidden">
-                <h2>Sign Up</h2>
+                <h2>Регистрация</h2>
                 <form id="signup-form">
-                    <input type="text" id="reg-name" placeholder="Your Name" required>
-                    <input type="text" id="reg-username" placeholder="Username (optional)">
+                    <input type="text" id="reg-name" placeholder="Ваше имя" required>
+                    <input type="text" id="reg-username" placeholder="Username (необязательно)">
                     <input type="email" id="reg-email" placeholder="Email" required>
-                    <input type="password" id="reg-password" placeholder="Password (min 6 chars)" required minlength="6">
-                    <button type="submit" class="btn btn-primary">Sign Up</button>
+                    <input type="password" id="reg-password" placeholder="Пароль (мин. 6 символов)" required minlength="6">
+                    <button type="submit" class="btn btn-primary">Зарегистрироваться</button>
                 </form>
-                <p class="auth-link">Already have an account? <a href="#" id="show-login">Sign In</a></p>
-            </div>
-
-            <div id="demo-access" class="auth-demo">
-                <p>Or <a href="#" id="demo-link">continue without account</a></p>
+                <p class="auth-link">Есть аккаунт? <a href="#" id="show-login">Войти</a></p>
             </div>
         </div>
     </div>
 
-    <!-- Main App -->
+    <!-- ===== MAIN APP ===== -->
     <div id="app-screen" class="hidden">
         <header>
             <div class="container header-content">
                 <div>
                     <h1>💰 CashFlow</h1>
-                    <p class="subtitle">Shared Expense Tracker</p>
+                    <p class="subtitle">Учёт совместных трат</p>
                 </div>
                 <div class="header-user">
                     <span id="current-user-name"></span>
-                    <button id="logout-btn" class="btn btn-small">Sign Out</button>
+                    <button id="logout-btn" class="btn btn-small">Выйти</button>
                 </div>
             </div>
         </header>
 
         <nav class="container">
-            <button class="nav-btn active" data-tab="dashboard">📊 Dashboard</button>
-            <button class="nav-btn" data-tab="groups">👥 Groups</button>
-            <button class="nav-btn" data-tab="expenses">💸 Expenses</button>
-            <button class="nav-btn" data-tab="balances">⚖️ Balances</button>
-            <button class="nav-btn" data-tab="settle">✅ Settle</button>
-            <button class="nav-btn" data-tab="optimize">🧠 Optimize</button>
+            <button class="nav-btn active" data-tab="dashboard">📊 Обзор</button>
+            <button class="nav-btn" data-tab="groups">👥 Группы</button>
+            <button class="nav-btn" data-tab="expenses">💸 Траты</button>
+            <button class="nav-btn" data-tab="balances">⚖️ Балансы</button>
+            <button class="nav-btn" data-tab="settle">✅ Погашение</button>
+            <button class="nav-btn" data-tab="optimize">🧠 Оптимизация</button>
         </nav>
 
         <main class="container">
-            <!-- Dashboard Tab -->
+
+            <!-- ===== DASHBOARD ===== -->
             <section id="tab-dashboard" class="tab active">
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-value" id="stat-users">0</div>
-                        <div class="stat-label">Users</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="stat-groups">0</div>
-                        <div class="stat-label">Groups</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="stat-expenses">0</div>
-                        <div class="stat-label">Expenses</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="stat-total">0 ₽</div>
-                        <div class="stat-label">Total Spent</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="stat-settled">0 ₽</div>
-                        <div class="stat-label">Total Settled</div>
+                <!-- Total balance summary for current user -->
+                <div id="my-balance-card" class="card my-balance-card">
+                    <h2>Мой баланс</h2>
+                    <div id="my-balance" class="my-balance">
+                        <p class="empty-state">Загрузка...</p>
                     </div>
                 </div>
 
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-groups">0</div>
+                        <div class="stat-label">Групп</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-expenses">0</div>
+                        <div class="stat-label">Трат</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-total">0 ₽</div>
+                        <div class="stat-label">Всего потрачено</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-settled">0 ₽</div>
+                        <div class="stat-label">Погашено</div>
+                    </div>
+                </div>
+
+                <!-- My groups quick view -->
                 <div class="card">
-                    <h2>Quick Add Expense</h2>
+                    <h2>Мои группы</h2>
+                    <div id="dash-groups-list" class="items-list">
+                        <p class="empty-state">У вас пока нет групп</p>
+                    </div>
+                </div>
+
+                <!-- Quick add expense -->
+                <div class="card">
+                    <h2>➕ Добавить трату</h2>
                     <form id="quick-expense-form">
+                        <!-- Step 1: Group (optional) -->
                         <div class="form-row">
                             <select id="qe-group" class="form-select">
-                                <option value="">No group (optional)</option>
-                            </select>
-                            <select id="qe-payer" required class="form-select">
-                                <option value="">Who paid?</option>
+                                <option value="">Без группы (все пользователи)</option>
                             </select>
                         </div>
+
+                        <!-- Step 2: Who paid -->
                         <div class="form-row">
-                            <input type="number" id="qe-amount" step="0.01" min="0.01" placeholder="Amount (₽)" required class="form-input">
-                            <select id="qe-category" class="form-select">
-                                <option value="food">🍔 Food</option>
-                                <option value="transport">🚗 Transport</option>
-                                <option value="housing">🏠 Housing</option>
-                                <option value="entertainment">🎬 Entertainment</option>
-                                <option value="utilities">💡 Utilities</option>
-                                <option value="groceries" selected>🛒 Groceries</option>
-                                <option value="other">📦 Other</option>
+                            <select id="qe-payer" required class="form-select">
+                                <option value="">Кто заплатил?</option>
                             </select>
                         </div>
-                        <input type="text" id="qe-desc" placeholder="Description (optional)" class="form-input">
-                        <div id="qe-participants" class="participants-list">
-                            <p class="hint">Split with:</p>
+
+                        <!-- Step 3: Amount + Category -->
+                        <div class="form-row">
+                            <input type="number" id="qe-amount" step="0.01" min="0.01" placeholder="Сумма (₽)" required class="form-input">
+                            <select id="qe-category" class="form-select">
+                                <option value="groceries" selected>🛒 Продукты</option>
+                                <option value="food">🍔 Еда</option>
+                                <option value="transport">🚗 Транспорт</option>
+                                <option value="housing">🏠 Жильё</option>
+                                <option value="entertainment">🎬 Развлечения</option>
+                                <option value="utilities">💡 Коммунальные</option>
+                                <option value="other">📦 Другое</option>
+                            </select>
                         </div>
+
+                        <!-- Step 4: Description -->
+                        <input type="text" id="qe-desc" placeholder="Описание (необязательно)" class="form-input">
+
+                        <!-- Step 5: Participants (auto-populated from group or all users) -->
+                        <div id="qe-participants" class="participants-list">
+                            <p class="hint">Разделить с:</p>
+                        </div>
+
+                        <!-- Step 6: Split type + Currency -->
                         <div class="form-row">
                             <select id="qe-split-type" class="form-select">
-                                <option value="equal">Equal split</option>
-                                <option value="percent">By percentage</option>
-                                <option value="exact">By exact amounts</option>
+                                <option value="equal">⚖️ Поровну</option>
+                                <option value="percent">📊 По процентам</option>
+                                <option value="exact">💵 По точным суммам</option>
                             </select>
                             <select id="qe-currency" class="form-select">
                                 <option value="RUB">₽ RUB</option>
@@ -130,147 +153,179 @@
                                 <option value="EUR">€ EUR</option>
                             </select>
                         </div>
-                        <button type="submit" class="btn btn-primary">➕ Add Expense</button>
+
+                        <button type="submit" class="btn btn-primary">➕ Добавить трату</button>
                     </form>
                     <div id="qe-result" class="result hidden"></div>
                 </div>
             </section>
 
-            <!-- Groups Tab -->
+            <!-- ===== GROUPS ===== -->
             <section id="tab-groups" class="tab">
-                <div class="card">
-                    <h2>My Groups</h2>
-                    <form id="create-group-form" class="form-inline">
-                        <input type="text" id="cg-name" placeholder="Group name" required class="form-input">
-                        <input type="text" id="cg-desc" placeholder="Description (optional)" class="form-input">
-                        <button type="submit" class="btn btn-primary">➕ Create Group</button>
-                    </form>
-                    <div id="groups-list" class="items-list">
-                        <p class="empty-state">No groups yet. Create your first group!</p>
+                <!-- List view -->
+                <div id="groups-list-view">
+                    <div class="card">
+                        <h2>Мои группы</h2>
+                        <div id="groups-list" class="items-list">
+                            <p class="empty-state">Загрузка...</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h2>Создать группу</h2>
+                        <form id="create-group-form">
+                            <input type="text" id="cg-name" placeholder="Название группы" required class="form-input">
+                            <input type="text" id="cg-desc" placeholder="Описание (необязательно)" class="form-input">
+                            <button type="submit" class="btn btn-primary">➕ Создать</button>
+                        </form>
                     </div>
                 </div>
 
-                <!-- Group detail view (hidden by default) -->
+                <!-- Detail view -->
                 <div id="group-detail" class="card hidden">
-                    <button id="group-back-btn" class="btn btn-small">← Back to groups</button>
+                    <button id="group-back-btn" class="btn btn-small">← Назад к группам</button>
                     <h2 id="gd-name"></h2>
                     <p id="gd-desc" class="group-desc"></p>
                     <div class="group-meta">
-                        <span id="gd-members"></span>
-                        <span id="gd-archived" class="badge badge-archived hidden">Archived</span>
+                        <span id="gd-members-count"></span>
+                        <span id="gd-archived" class="badge badge-archived hidden">Архив</span>
                     </div>
 
-                    <h3>Members</h3>
+                    <!-- Add member -->
+                    <h3>Добавить участника</h3>
+                    <div class="form-row">
+                        <select id="gd-add-user-select" class="form-select">
+                            <option value="">Выберите пользователя</option>
+                        </select>
+                        <button id="gd-add-user-btn" class="btn btn-small">Добавить</button>
+                    </div>
+
+                    <!-- Members -->
+                    <h3>Участники</h3>
                     <div id="gd-members-list" class="members-list"></div>
 
-                    <h3>Group Balances</h3>
+                    <!-- Balances -->
+                    <h3>Балансы группы</h3>
                     <div id="gd-balances" class="items-list"></div>
 
-                    <h3>Group Expenses</h3>
+                    <!-- Expenses -->
+                    <h3>Траты группы</h3>
                     <div id="gd-expenses" class="items-list"></div>
                 </div>
             </section>
 
-            <!-- Expenses Tab -->
+            <!-- ===== EXPENSES ===== -->
             <section id="tab-expenses" class="tab">
                 <div class="card">
-                    <h2>Expense History</h2>
+                    <h2>История трат</h2>
                     <div class="filters">
                         <select id="exp-group-filter" class="form-select">
-                            <option value="">All groups</option>
+                            <option value="">Все группы</option>
                         </select>
                         <select id="exp-category-filter" class="form-select">
-                            <option value="">All categories</option>
-                            <option value="food">🍔 Food</option>
-                            <option value="transport">🚗 Transport</option>
-                            <option value="housing">🏠 Housing</option>
-                            <option value="entertainment">🎬 Entertainment</option>
-                            <option value="utilities">💡 Utilities</option>
-                            <option value="groceries">🛒 Groceries</option>
-                            <option value="other">📦 Other</option>
+                            <option value="">Все категории</option>
+                            <option value="food">🍔 Еда</option>
+                            <option value="transport">🚗 Транспорт</option>
+                            <option value="housing">🏠 Жильё</option>
+                            <option value="entertainment">🎬 Развлечения</option>
+                            <option value="utilities">💡 Коммунальные</option>
+                            <option value="groceries">🛒 Продукты</option>
+                            <option value="other">📦 Другое</option>
                         </select>
-                        <input type="date" id="exp-date-from" class="form-input">
-                        <input type="date" id="exp-date-to" class="form-input">
-                        <select id="exp-user-filter" class="form-select">
-                            <option value="">All users</option>
-                        </select>
-                        <button id="exp-apply-filters" class="btn btn-small">🔍 Filter</button>
+                        <input type="date" id="exp-date-from" class="form-input" placeholder="От">
+                        <input type="date" id="exp-date-to" class="form-input" placeholder="До">
+                        <button id="exp-apply-filters" class="btn btn-small">🔍 Фильтр</button>
+                        <button id="exp-clear-filters" class="btn btn-small">✕ Сброс</button>
                     </div>
                     <div id="expenses-list" class="items-list">
-                        <p class="empty-state">No expenses yet. Add your first one on the Dashboard!</p>
+                        <p class="empty-state">Загрузка...</p>
                     </div>
                 </div>
             </section>
 
-            <!-- Balances Tab -->
+            <!-- ===== BALANCES ===== -->
             <section id="tab-balances" class="tab">
                 <div class="card">
-                    <h2>Balance Overview</h2>
-                    <select id="balance-group" class="form-select">
-                        <option value="">All groups</option>
+                    <h2>Мои балансы</h2>
+                    <p class="hint">Показано сколько вам должны / сколько должны вы</p>
+                    <select id="balance-group-filter" class="form-select">
+                        <option value="">Все группы</option>
                     </select>
-                    <select id="balance-user" class="form-select">
-                        <option value="">Select a user to see balances</option>
-                    </select>
-                    <div id="balances-list" class="items-list">
-                        <p class="empty-state">Select a user above</p>
+                    <div id="my-balances-list" class="items-list">
+                        <p class="empty-state">Загрузка...</p>
                     </div>
                 </div>
                 <div class="card">
-                    <h2>Total Balance</h2>
-                    <div id="total-balance" class="total-balance">
-                        <p class="empty-state">Select a user to see total balance</p>
+                    <h2>Итог</h2>
+                    <div id="my-total-balance" class="total-balance">
+                        <p class="empty-state">Загрузка...</p>
                     </div>
                 </div>
             </section>
 
-            <!-- Settle Tab -->
+            <!-- ===== SETTLE ===== -->
             <section id="tab-settle" class="tab">
+                <!-- Who I owe -->
                 <div class="card">
-                    <h2>Settle a Debt</h2>
+                    <h2>💸 Я должен</h2>
+                    <div id="i-owe-list" class="items-list">
+                        <p class="empty-state">Загрузка...</p>
+                    </div>
+                </div>
+
+                <!-- Who owes me -->
+                <div class="card">
+                    <h2>💚 Мне должны</h2>
+                    <div id="owe-me-list" class="items-list">
+                        <p class="empty-state">Загрузка...</p>
+                    </div>
+                </div>
+
+                <!-- Manual settlement -->
+                <div class="card">
+                    <h2>Ручное погашение</h2>
                     <form id="settle-form">
-                        <select id="settle-payer" required class="form-select">
-                            <option value="">Who is paying?</option>
-                        </select>
-                        <select id="settle-creditor" required class="form-select">
-                            <option value="">To whom?</option>
-                        </select>
-                        <select id="settle-group" class="form-select">
-                            <option value="">Any group (optional)</option>
-                        </select>
-                        <input type="number" id="settle-amount" step="0.01" min="0.01" placeholder="Amount (₽, leave empty for full settlement)" class="form-input">
-                        <button type="submit" class="btn btn-success">✅ Settle</button>
+                        <div class="form-row">
+                            <select id="settle-payer" required class="form-select">
+                                <option value="">Кто платит?</option>
+                            </select>
+                            <select id="settle-creditor" required class="form-select">
+                                <option value="">Кому?</option>
+                            </select>
+                        </div>
+                        <input type="number" id="settle-amount" step="0.01" min="0.01" placeholder="Сумма (₽, пусто = полный долг)" class="form-input">
+                        <button type="submit" class="btn btn-success">✅ Погасить</button>
                     </form>
                     <div id="settle-result" class="result hidden"></div>
                 </div>
+
+                <!-- Settlement history -->
                 <div class="card">
-                    <h2>Settlement History</h2>
+                    <h2>История погашений</h2>
                     <div id="settlements-list" class="items-list">
-                        <p class="empty-state">No settlements yet</p>
+                        <p class="empty-state">Загрузка...</p>
                     </div>
                 </div>
             </section>
 
-            <!-- Optimize Tab -->
+            <!-- ===== OPTIMIZE ===== -->
             <section id="tab-optimize" class="tab">
                 <div class="card">
-                    <h2>🧠 Optimized Debt Settlement</h2>
-                    <p class="hint">This algorithm minimizes the number of transactions needed to settle all debts.</p>
+                    <h2>🧠 Оптимальный план погашения долгов</h2>
+                    <p class="hint">Минимальное количество переводов для закрытия всех долгов</p>
                     <select id="optimize-group" class="form-select">
-                        <option value="">All groups</option>
+                        <option value="">Все группы</option>
                     </select>
-                    <button id="optimize-btn" class="btn btn-primary">Calculate Optimal Plan</button>
+                    <button id="optimize-btn" class="btn btn-primary">Рассчитать</button>
                     <div id="optimize-result" class="items-list">
-                        <p class="empty-state">Click the button to see the optimized settlement plan</p>
+                        <p class="empty-state">Нажмите кнопку для расчёта</p>
                     </div>
                 </div>
             </section>
+
         </main>
     </div>
 
-    <!-- Toast notifications -->
     <div id="toast" class="toast hidden"></div>
-
     <script src="/static/app.js"></script>
 </body>
 </html>
