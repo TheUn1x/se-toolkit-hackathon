@@ -7,8 +7,8 @@
 ## Demo
 
 ### Web App
-![Dashboard](![Screenshot 1](images/1.png)
-)
+[Screenshot 1](images/1.png)
+
 *Dashboard with stats, quick expense form, and group overview*
 
 ![Balances](<img width="1865" height="912" alt="image" src="https://github.com/user-attachments/assets/fbfae9c1-4a8d-4803-adf1-97c681962be2" />
