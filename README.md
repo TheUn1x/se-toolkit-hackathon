@@ -16,8 +16,6 @@
 *One-click optimized debt settlement plan — minimizes number of transactions*
 ![3](images/3.png)
 
-> **Live demo:** Replace with your deployed URL or add a GIF recording
-
 ---
 
 ## Product Context
