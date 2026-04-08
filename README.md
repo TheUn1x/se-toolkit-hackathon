@@ -1,4 +1,4 @@
-![gXu3Q47BZKFYGpGInOPC](https://github.com/user-attachments/assets/43823832-c168-45d4-8e33-794d1d8dd167)# 💰 CashFlow
+# 💰 CashFlow
 
 **Shared expense tracking made simple** — track group spending, settle debts automatically, and never argue about money again.
 
