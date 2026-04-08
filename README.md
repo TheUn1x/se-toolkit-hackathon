@@ -7,7 +7,7 @@
 ## Demo
 
 ### Web App
-[Screenshot 1](images/1.png)
+![Screenshot 1](images/1.png)
 
 *Dashboard with stats, quick expense form, and group overview*
 
