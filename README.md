@@ -7,13 +7,16 @@
 ## Demo
 
 ### Web App
-![Dashboard](docs/screenshots/dashboard.png)
+![Dashboard](
+)
 *Dashboard with stats, quick expense form, and group overview*
 
-![Balances](docs/screenshots/balances.png)
+![Balances](<img width="1865" height="912" alt="image" src="https://github.com/user-attachments/assets/fbfae9c1-4a8d-4803-adf1-97c681962be2" />
+)
 *Balance overview showing who owes whom*
 
-![Optimize](docs/screenshots/optimize.png)
+![Optimize](<img width="1868" height="915" alt="image" src="https://github.com/user-attachments/assets/e9238a19-b02d-49c0-8c0c-fdf2e5c50af4" />
+)
 *One-click optimized debt settlement plan — minimizes number of transactions*
 
 > **Live demo:** Replace with your deployed URL or add a GIF recording
